@@ -182,11 +182,9 @@ class Megafacturador extends Controller
      */
     private function activarContabilidadIntegrada(): void
     {
-        $empresa = new Empresa();
-        $empresa->loadFromCode($this->empresa->primaryColumnValue());
-        $empresa->contintegrada = true;
+        $this->empresa->contintegrada = true;
 
-        if ($empresa->save()) {
+        if ($this->empresa->save()) {
             $this->toolBox()->i18nLog()->notice('record-updated-correctly');
         } else {
             $this->toolBox()->i18nLog()->error('record-save-error');
@@ -241,7 +239,8 @@ class Megafacturador extends Controller
             $where[] = new DataBaseWhere('coddivisa', $coddivisa);
         }
 
-        $model = $this->dataBase->getModelClass($modelName);
+        $className = 'FacturaScripts\\Dinamic\\Model\\' . $modelName;
+        $model = new $className();
         return $model->all($where, ['fecha' => 'ASC', 'hora' => 'ASC'], 0, 20);
     }
 
@@ -255,7 +254,8 @@ class Megafacturador extends Controller
     public function totalPendientes(string $modelName = 'AlbaranCliente'): int
     {
         $where = $this->getSqlConditions();
-        $model = $this->dataBase->getModelClass($modelName);
+        $className = 'FacturaScripts\\Dinamic\\Model\\' . $modelName;
+        $model = new $className();
         return $model->count($where);
     }
 
