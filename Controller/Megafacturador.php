@@ -358,69 +358,22 @@ class Megafacturador extends Controller
             return false;
         }
 
-        // Use first albaran as prototype
-        $prototype = $albaranes[0];
+        // Create new invoice
+        $nuevaFactura = new FacturaCliente();
 
-        // Prepare properties with date (explicit to ensure correct date is used)
-        $properties = [];
+        // Set custom date if specified (otherwise generator uses albaran dates automatically)
         if ($fecha) {
-            // Use custom date (today)
-            $properties['fecha'] = $fecha;
-        } else {
-            // CRITICAL: Use albaran's date explicitly (BusinessDocumentGenerator uses TODAY by default if not specified)
-            $properties['fecha'] = $prototype->fecha;
+            $nuevaFactura->setDate($fecha, $nuevaFactura->hora);
         }
 
-        // Generate invoice from first albaran (copies all its lines WITH idalbaran reference)
-        $success = $generator->generate(
-            $prototype,           // First albaran as prototype
-            'FacturaCliente',     // Class name as STRING
-            [],                   // EMPTY = copy all lines from prototype
-            [],                   // No quantity overrides
-            $properties           // Additional properties (date)
-        );
-
-        if (!$success) {
-            Tools::log()->error('failed-to-generate-invoice-from-albaran',
-                ['%id%' => $prototype->codigo]);
-            return false;
+        // Prepare array of docs for generator (CRITICAL: this marks albaranes as invoiced)
+        $docs = [];
+        foreach ($albaranes as $alb) {
+            $docs[] = $alb;
         }
 
-        // Get the generated invoice
-        $facturas = $generator->getLastDocs();
-        if (empty($facturas)) {
-            Tools::log()->error('no-invoice-generated');
-            return false;
-        }
-
-        $factura = $facturas[0];
-
-        // If grouping multiple albaranes, add lines from the rest
-        if (count($albaranes) > 1) {
-            // Add lines from remaining albaranes (skip first, already added)
-            for ($i = 1; $i < count($albaranes); $i++) {
-                $alb = $albaranes[$i];
-
-                foreach ($alb->getLines() as $line) {
-                    $newLine = $factura->getNewLine();
-                    $newLine->loadFromData($line->toArray());
-                    // CRITICAL: Keep the albaran reference to properly link documents
-                    $newLine->idalbaran = $alb->primaryColumnValue();
-                    if (!$newLine->save()) {
-                        Tools::log()->error('failed-to-add-line-to-invoice');
-                        return false;
-                    }
-                }
-            }
-
-            // Recalculate totals and save
-            if (!$factura->save()) {
-                Tools::log()->error('failed-to-save-invoice');
-                return false;
-            }
-        }
-
-        return true;
+        // Generate invoice from all albaranes (generator handles everything including marking as invoiced)
+        return $generator->generate($nuevaFactura, $docs);
     }
 
     /**
@@ -438,69 +391,22 @@ class Megafacturador extends Controller
             return false;
         }
 
-        // Use first albaran as prototype
-        $prototype = $albaranes[0];
+        // Create new invoice
+        $nuevaFactura = new FacturaProveedor();
 
-        // Prepare properties with date (explicit to ensure correct date is used)
-        $properties = [];
+        // Set custom date if specified (otherwise generator uses albaran dates automatically)
         if ($fecha) {
-            // Use custom date (today)
-            $properties['fecha'] = $fecha;
-        } else {
-            // CRITICAL: Use albaran's date explicitly (BusinessDocumentGenerator uses TODAY by default if not specified)
-            $properties['fecha'] = $prototype->fecha;
+            $nuevaFactura->setDate($fecha, $nuevaFactura->hora);
         }
 
-        // Generate invoice from first albaran (copies all its lines WITH idalbaran reference)
-        $success = $generator->generate(
-            $prototype,           // First albaran as prototype
-            'FacturaProveedor',   // Class name as STRING
-            [],                   // EMPTY = copy all lines from prototype
-            [],                   // No quantity overrides
-            $properties           // Additional properties (date)
-        );
-
-        if (!$success) {
-            Tools::log()->error('failed-to-generate-invoice-from-albaran',
-                ['%id%' => $prototype->codigo]);
-            return false;
+        // Prepare array of docs for generator (CRITICAL: this marks albaranes as invoiced)
+        $docs = [];
+        foreach ($albaranes as $alb) {
+            $docs[] = $alb;
         }
 
-        // Get the generated invoice
-        $facturas = $generator->getLastDocs();
-        if (empty($facturas)) {
-            Tools::log()->error('no-invoice-generated');
-            return false;
-        }
-
-        $factura = $facturas[0];
-
-        // If grouping multiple albaranes, add lines from the rest
-        if (count($albaranes) > 1) {
-            // Add lines from remaining albaranes (skip first, already added)
-            for ($i = 1; $i < count($albaranes); $i++) {
-                $alb = $albaranes[$i];
-
-                foreach ($alb->getLines() as $line) {
-                    $newLine = $factura->getNewLine();
-                    $newLine->loadFromData($line->toArray());
-                    // CRITICAL: Keep the albaran reference to properly link documents
-                    $newLine->idalbaran = $alb->primaryColumnValue();
-                    if (!$newLine->save()) {
-                        Tools::log()->error('failed-to-add-line-to-invoice');
-                        return false;
-                    }
-                }
-            }
-
-            // Recalculate totals and save
-            if (!$factura->save()) {
-                Tools::log()->error('failed-to-save-invoice');
-                return false;
-            }
-        }
-
-        return true;
+        // Generate invoice from all albaranes (generator handles everything including marking as invoiced)
+        return $generator->generate($nuevaFactura, $docs);
     }
 
     /**
