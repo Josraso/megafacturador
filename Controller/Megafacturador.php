@@ -29,6 +29,7 @@ use FacturaScripts\Dinamic\Model\AlbaranProveedor;
 use FacturaScripts\Dinamic\Model\Cliente;
 use FacturaScripts\Dinamic\Model\Ejercicio;
 use FacturaScripts\Dinamic\Model\Empresa;
+use FacturaScripts\Dinamic\Model\EstadoDocumento;
 use FacturaScripts\Dinamic\Model\FacturaCliente;
 use FacturaScripts\Dinamic\Model\FacturaProveedor;
 use FacturaScripts\Dinamic\Model\FormaPago;
@@ -413,6 +414,21 @@ class Megafacturador extends Controller
 
             // If all lines fully served, mark document as non-editable
             if ($allServed) {
+                // Prevent auto-generation when changing status
+                $alb->setDocumentGeneration(false);
+
+                // Find non-editable status for this document type
+                $estadoModel = new EstadoDocumento();
+                $whereEstado = [
+                    new DataBaseWhere('tipodoc', 'AlbaranCliente'),
+                    new DataBaseWhere('editable', false)
+                ];
+                $estados = $estadoModel->all($whereEstado, [], 0, 1);
+
+                if (!empty($estados)) {
+                    $alb->idestado = $estados[0]->idestado;
+                }
+
                 $alb->editable = false;
                 if (!$alb->save()) {
                     Tools::log()->error('failed-to-mark-as-invoiced');
@@ -494,6 +510,21 @@ class Megafacturador extends Controller
 
             // If all lines fully served, mark document as non-editable
             if ($allServed) {
+                // Prevent auto-generation when changing status
+                $alb->setDocumentGeneration(false);
+
+                // Find non-editable status for this document type
+                $estadoModel = new EstadoDocumento();
+                $whereEstado = [
+                    new DataBaseWhere('tipodoc', 'AlbaranProveedor'),
+                    new DataBaseWhere('editable', false)
+                ];
+                $estados = $estadoModel->all($whereEstado, [], 0, 1);
+
+                if (!empty($estados)) {
+                    $alb->idestado = $estados[0]->idestado;
+                }
+
                 $alb->editable = false;
                 if (!$alb->save()) {
                     Tools::log()->error('failed-to-mark-as-invoiced');
