@@ -287,8 +287,14 @@ class Megafacturador extends Controller
         $recargar = false;
 
         // Initialize session array for generated invoices on first run
-        if (!$this->request->get('procesar_continuar')) {
+        $continuar = $this->request->get('procesar_continuar');
+        Tools::log()->info('DEBUG: generarFacturas() - procesar_continuar: ' . ($continuar ? 'TRUE' : 'FALSE'));
+
+        if (!$continuar) {
             $_SESSION['megafac_facturas_generadas'] = [];
+            Tools::log()->info('DEBUG: Initialized empty session array');
+        } else {
+            Tools::log()->info('DEBUG: Continuing - session has: ' . (isset($_SESSION['megafac_facturas_generadas']) ? count($_SESSION['megafac_facturas_generadas']) : 'NOT SET'));
         }
 
         // Determine invoice date based on user preference
@@ -466,6 +472,7 @@ class Megafacturador extends Controller
                 $_SESSION['megafac_facturas_generadas'] = [];
             }
             $_SESSION['megafac_facturas_generadas'][] = $factura->primaryColumnValue();
+            Tools::log()->info('DEBUG: Added invoice ID to session: ' . $factura->primaryColumnValue() . ' | Total in session: ' . count($_SESSION['megafac_facturas_generadas']));
         }
 
         // CRITICAL: Mark lines as served and check if albaran is fully invoiced
@@ -671,6 +678,11 @@ class Megafacturador extends Controller
         }
 
         // Get list of generated invoice IDs from session
+        Tools::log()->info('DEBUG: Checking session for invoices. Session isset: ' . (isset($_SESSION['megafac_facturas_generadas']) ? 'YES' : 'NO'));
+        if (isset($_SESSION['megafac_facturas_generadas'])) {
+            Tools::log()->info('DEBUG: Session content: ' . print_r($_SESSION['megafac_facturas_generadas'], true));
+        }
+
         if (empty($_SESSION['megafac_facturas_generadas'])) {
             Tools::log()->warning('no-invoices-to-send');
             return;
