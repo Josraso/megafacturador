@@ -348,18 +348,35 @@ class Megafacturador extends Controller
      */
     private function facturarAlbaranCliente($generator, array $albaranes, ?string $fecha): bool
     {
-        $nuevaFactura = new FacturaCliente();
-
-        if ($fecha) {
-            $nuevaFactura->setDate($fecha, $nuevaFactura->hora);
+        if (empty($albaranes)) {
+            return false;
         }
 
-        $docs = [];
+        // Use first albaran as prototype
+        $prototype = $albaranes[0];
+
+        // Collect ALL lines from ALL albaranes
+        $newLines = [];
         foreach ($albaranes as $alb) {
-            $docs[] = $alb;
+            foreach ($alb->getLines() as $line) {
+                $newLines[] = $line;
+            }
         }
 
-        return $generator->generate($nuevaFactura, $docs);
+        // Prepare properties with custom date if needed
+        $properties = [];
+        if ($fecha) {
+            $properties['fecha'] = $fecha;
+        }
+
+        // Call generate with correct parameters
+        return $generator->generate(
+            $prototype,           // First albaran as prototype
+            'FacturaCliente',     // Class name as STRING
+            $newLines,            // All combined lines
+            [],                   // No quantity overrides
+            $properties           // Additional properties (date)
+        );
     }
 
     /**
@@ -373,18 +390,35 @@ class Megafacturador extends Controller
      */
     private function facturarAlbaranProveedor($generator, array $albaranes, ?string $fecha): bool
     {
-        $nuevaFactura = new FacturaProveedor();
-
-        if ($fecha) {
-            $nuevaFactura->setDate($fecha, $nuevaFactura->hora);
+        if (empty($albaranes)) {
+            return false;
         }
 
-        $docs = [];
+        // Use first albaran as prototype
+        $prototype = $albaranes[0];
+
+        // Collect ALL lines from ALL albaranes
+        $newLines = [];
         foreach ($albaranes as $alb) {
-            $docs[] = $alb;
+            foreach ($alb->getLines() as $line) {
+                $newLines[] = $line;
+            }
         }
 
-        return $generator->generate($nuevaFactura, $docs);
+        // Prepare properties with custom date if needed
+        $properties = [];
+        if ($fecha) {
+            $properties['fecha'] = $fecha;
+        }
+
+        // Call generate with correct parameters
+        return $generator->generate(
+            $prototype,           // First albaran as prototype
+            'FacturaProveedor',   // Class name as STRING
+            $newLines,            // All combined lines
+            [],                   // No quantity overrides
+            $properties           // Additional properties (date)
+        );
     }
 
     /**
