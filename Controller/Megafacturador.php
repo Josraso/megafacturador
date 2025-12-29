@@ -361,7 +361,7 @@ class Megafacturador extends Controller
         // Use first albaran as prototype
         $prototype = $albaranes[0];
 
-        // Collect all lines from all albaranes
+        // Collect all lines from all albaranes and track quantities
         $newLines = [];
         $quantities = [];
         foreach ($albaranes as $alb) {
@@ -377,7 +377,7 @@ class Megafacturador extends Controller
             // Use custom date (today)
             $properties['fecha'] = $fecha;
         } else {
-            // Use albaran's date (use first albaran's date for grouped invoices)
+            // Use albaran's date
             $properties['fecha'] = $prototype->fecha;
         }
 
@@ -389,32 +389,34 @@ class Megafacturador extends Controller
             return false;
         }
 
-        // CRITICAL: Update 'servido' field on all albaran lines to mark as invoiced
+        // CRITICAL: Mark lines as served and check if albaran is fully invoiced
         foreach ($albaranes as $alb) {
-            // Reload lines to get fresh data
-            $lines = $alb->getLines();
             $allServed = true;
 
+            // Get fresh lines from database
+            $lines = $alb->getLines();
             foreach ($lines as $line) {
-                // Update servido with the invoiced quantity
+                // Update servido field
                 if (isset($quantities[$line->primaryColumnValue()])) {
                     $line->servido += $quantities[$line->primaryColumnValue()];
                     if (!$line->save()) {
-                        Tools::log()->warning('failed-to-update-line-servido', ['%line%' => $line->primaryColumnValue()]);
+                        Tools::log()->error('failed-to-update-servido');
+                        return false;
                     }
                 }
 
-                // Check if line is fully served
+                // Check if this line is fully served
                 if ($line->servido < $line->cantidad) {
                     $allServed = false;
                 }
             }
 
-            // If all lines are fully served, mark albaran as non-editable
+            // If all lines fully served, mark document as non-editable
             if ($allServed) {
                 $alb->editable = false;
                 if (!$alb->save()) {
-                    Tools::log()->warning('failed-to-mark-albaran-as-non-editable', ['%code%' => $alb->codigo]);
+                    Tools::log()->error('failed-to-mark-as-invoiced');
+                    return false;
                 }
             }
         }
@@ -440,7 +442,7 @@ class Megafacturador extends Controller
         // Use first albaran as prototype
         $prototype = $albaranes[0];
 
-        // Collect all lines from all albaranes
+        // Collect all lines from all albaranes and track quantities
         $newLines = [];
         $quantities = [];
         foreach ($albaranes as $alb) {
@@ -456,7 +458,7 @@ class Megafacturador extends Controller
             // Use custom date (today)
             $properties['fecha'] = $fecha;
         } else {
-            // Use albaran's date (use first albaran's date for grouped invoices)
+            // Use albaran's date
             $properties['fecha'] = $prototype->fecha;
         }
 
@@ -468,32 +470,34 @@ class Megafacturador extends Controller
             return false;
         }
 
-        // CRITICAL: Update 'servido' field on all albaran lines to mark as invoiced
+        // CRITICAL: Mark lines as served and check if albaran is fully invoiced
         foreach ($albaranes as $alb) {
-            // Reload lines to get fresh data
-            $lines = $alb->getLines();
             $allServed = true;
 
+            // Get fresh lines from database
+            $lines = $alb->getLines();
             foreach ($lines as $line) {
-                // Update servido with the invoiced quantity
+                // Update servido field
                 if (isset($quantities[$line->primaryColumnValue()])) {
                     $line->servido += $quantities[$line->primaryColumnValue()];
                     if (!$line->save()) {
-                        Tools::log()->warning('failed-to-update-line-servido', ['%line%' => $line->primaryColumnValue()]);
+                        Tools::log()->error('failed-to-update-servido');
+                        return false;
                     }
                 }
 
-                // Check if line is fully served
+                // Check if this line is fully served
                 if ($line->servido < $line->cantidad) {
                     $allServed = false;
                 }
             }
 
-            // If all lines are fully served, mark albaran as non-editable
+            // If all lines fully served, mark document as non-editable
             if ($allServed) {
                 $alb->editable = false;
                 if (!$alb->save()) {
-                    Tools::log()->warning('failed-to-mark-albaran-as-non-editable', ['%code%' => $alb->codigo]);
+                    Tools::log()->error('failed-to-mark-as-invoiced');
+                    return false;
                 }
             }
         }
