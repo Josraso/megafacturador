@@ -365,7 +365,20 @@ class Megafacturador extends Controller
         // Collect all lines from all albaranes and track quantities
         $newLines = [];
         $quantities = [];
+
         foreach ($albaranes as $alb) {
+            // Add separator line showing albaran info (when grouping multiple albaranes)
+            if (count($albaranes) > 1) {
+                // Create info line with albaran number and date
+                $infoLine = $alb->getNewLine();
+                $infoLine->cantidad = 0;
+                $infoLine->pvpunitario = 0;
+                $infoLine->descripcion = 'Albarán ' . $alb->codigo . ' (' . $alb->numero2 . '), ' . $alb->fecha;
+                $newLines[] = $infoLine;
+                $quantities[$infoLine->primaryColumnValue()] = 0;
+            }
+
+            // Add all product lines from this albaran
             foreach ($alb->getLines() as $line) {
                 $newLines[] = $line;
                 $quantities[$line->primaryColumnValue()] = $line->cantidad;
@@ -461,7 +474,20 @@ class Megafacturador extends Controller
         // Collect all lines from all albaranes and track quantities
         $newLines = [];
         $quantities = [];
+
         foreach ($albaranes as $alb) {
+            // Add separator line showing albaran info (when grouping multiple albaranes)
+            if (count($albaranes) > 1) {
+                // Create info line with albaran number and date
+                $infoLine = $alb->getNewLine();
+                $infoLine->cantidad = 0;
+                $infoLine->pvpunitario = 0;
+                $infoLine->descripcion = 'Albarán ' . $alb->codigo . ' (' . $alb->numero2 . '), ' . $alb->fecha;
+                $newLines[] = $infoLine;
+                $quantities[$infoLine->primaryColumnValue()] = 0;
+            }
+
+            // Add all product lines from this albaran
             foreach ($alb->getLines() as $line) {
                 $newLines[] = $line;
                 $quantities[$line->primaryColumnValue()] = $line->cantidad;
