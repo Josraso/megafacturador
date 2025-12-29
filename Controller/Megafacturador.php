@@ -21,6 +21,7 @@ namespace FacturaScripts\Plugins\Megafacturador\Controller;
 
 use FacturaScripts\Core\Base\Controller;
 use FacturaScripts\Core\Base\DataBase\DataBaseWhere;
+use FacturaScripts\Core\Tools;
 use FacturaScripts\Dinamic\Lib\Accounting\AccountingAccounts;
 use FacturaScripts\Dinamic\Lib\BusinessDocumentGenerator;
 use FacturaScripts\Dinamic\Model\AlbaranCliente;
@@ -33,7 +34,6 @@ use FacturaScripts\Dinamic\Model\FacturaProveedor;
 use FacturaScripts\Dinamic\Model\FormaPago;
 use FacturaScripts\Dinamic\Model\Proveedor;
 use FacturaScripts\Dinamic\Model\Serie;
-use FacturaScripts\Dinamic\Model\Settings;
 
 /**
  * Controller to mass invoice pending delivery notes (albaranes)
@@ -135,22 +135,17 @@ class Megafacturador extends Controller
     private function loadConfig(): void
     {
         $this->opciones = [
-            'megafac_agrupar' => false,
-            'megafac_codserie' => '',
-            'megafac_compras' => 1,
-            'megafac_email' => false,
-            'megafac_fecha' => 'albaran',
-            'megafac_hasta' => date('d-m-Y'),
-            'megafac_ventas' => 1,
+            'megafac_agrupar' => Tools::settings('megafacturador', 'megafac_agrupar', false),
+            'megafac_codserie' => Tools::settings('megafacturador', 'megafac_codserie', ''),
+            'megafac_compras' => Tools::settings('megafacturador', 'megafac_compras', 1),
+            'megafac_email' => Tools::settings('megafacturador', 'megafac_email', false),
+            'megafac_fecha' => Tools::settings('megafacturador', 'megafac_fecha', 'albaran'),
+            'megafac_hasta' => Tools::settings('megafacturador', 'megafac_hasta', date('Y-m-d')),
+            'megafac_ventas' => Tools::settings('megafacturador', 'megafac_ventas', 1),
         ];
 
-        $settings = new Settings();
-        foreach ($this->opciones as $key => $value) {
-            $this->opciones[$key] = $settings->get('megafacturador', $key, $value);
-        }
-
-        // Fix date format
-        $this->opciones['megafac_hasta'] = date('d-m-Y', strtotime($this->opciones['megafac_hasta']));
+        // Fix date format for HTML5 input type="date" (Y-m-d format)
+        $this->opciones['megafac_hasta'] = date('Y-m-d', strtotime($this->opciones['megafac_hasta']));
     }
 
     /**
@@ -166,11 +161,9 @@ class Megafacturador extends Controller
         $this->opciones['megafac_hasta'] = $this->request->request->get('megafac_hasta');
         $this->opciones['megafac_ventas'] = $this->request->request->get('megafac_ventas') ? 1 : 0;
 
-        $settings = new Settings();
         foreach ($this->opciones as $key => $value) {
-            $settings->set('megafacturador', $key, $value);
+            Tools::settingsSet('megafacturador', $key, $value);
         }
-        $settings->save();
 
         if ($this->request->request->get('procesar') === 'TRUE') {
             $this->generarFacturas();
@@ -265,6 +258,7 @@ class Megafacturador extends Controller
     private function generarFacturas(): void
     {
         $recargar = false;
+        // Use today's date in d-m-Y format for invoices
         $fecha = date('d-m-Y');
         if ($this->opciones['megafac_fecha'] === 'albaran') {
             $fecha = null;

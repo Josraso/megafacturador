@@ -39,6 +39,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
     <div class="container-fluid">
         <form name="f_facturador" class="form" action="{{ fsc.url() }}" method="post">
+            {{ formToken() }}
             <input type="hidden" name="procesar" value="FALSE"/>
             <div class="row">
                 <div class="col-sm-12">
@@ -97,9 +98,9 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
                             </div>
                             <div class="mb-3">
                                 <label for="megafac_hasta" class="form-label">{{ i18n.trans('until') }}:</label>
-                                <input type="text" name="megafac_hasta" id="megafac_hasta"
+                                <input type="date" name="megafac_hasta" id="megafac_hasta"
                                        value="{{ fsc.opciones.megafac_hasta }}"
-                                       class="form-control datepicker" autocomplete="off"
+                                       class="form-control" autocomplete="off"
                                        onchange="this.form.submit();"/>
                             </div>
                         </div>
