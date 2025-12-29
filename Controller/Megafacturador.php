@@ -165,6 +165,9 @@ class Megafacturador extends Controller
             Tools::settingsSet('megafacturador', $key, $value);
         }
 
+        // CRITICAL: Save all settings to database
+        Tools::settingsSave();
+
         if ($this->request->request->get('procesar') === 'TRUE') {
             $this->generarFacturas();
         }
@@ -258,11 +261,14 @@ class Megafacturador extends Controller
     private function generarFacturas(): void
     {
         $recargar = false;
-        // Use today's date in d-m-Y format for invoices
-        $fecha = date('d-m-Y');
-        if ($this->opciones['megafac_fecha'] === 'albaran') {
-            $fecha = null;
+
+        // Determine invoice date based on user preference
+        $fecha = null;
+        if ($this->opciones['megafac_fecha'] === 'hoy') {
+            // Use today's date in Y-m-d format (required by BusinessDocument)
+            $fecha = date('Y-m-d');
         }
+        // If 'albaran', $fecha stays null and will use delivery note's date
 
         if ($this->opciones['megafac_ventas']) {
             $total1 = 0;
