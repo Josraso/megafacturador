@@ -294,10 +294,26 @@ class Megafacturador extends Controller
             $tmpFile = sys_get_temp_dir() . '/megafac_' . $runId . '.txt';
             file_put_contents($tmpFile, '');
             Tools::log()->info('DEBUG: New run - created temp file: ' . $tmpFile);
+
+            // Clean up old temp files (older than 1 hour)
+            $tmpDir = sys_get_temp_dir();
+            foreach (glob($tmpDir . '/megafac_mf_*.txt') as $oldFile) {
+                if (filemtime($oldFile) < time() - 3600) {
+                    @unlink($oldFile);
+                    Tools::log()->info('DEBUG: Cleaned up old temp file: ' . $oldFile);
+                }
+            }
         } else {
             $tmpFile = sys_get_temp_dir() . '/megafac_' . $runId . '.txt';
             Tools::log()->info('DEBUG: Continuing run - using temp file: ' . $tmpFile);
         }
+
+        Tools::log()->info('DEBUG: Config - ventas: ' . $this->opciones['megafac_ventas'] .
+                          ', compras: ' . $this->opciones['megafac_compras'] .
+                          ', email: ' . $this->opciones['megafac_email'] .
+                          ', agrupar: ' . $this->opciones['megafac_agrupar'] .
+                          ', fecha: ' . $this->opciones['megafac_fecha'] .
+                          ', hasta: ' . $this->opciones['megafac_hasta']);
 
         // Determine invoice date based on user preference
         $fecha = null;
@@ -315,7 +331,11 @@ class Megafacturador extends Controller
             $total1 = 0;
             $generator = new BusinessDocumentGenerator();
 
-            foreach ($this->albaranesPendientes('AlbaranCliente') as $alb) {
+            $pendientes = $this->albaranesPendientes('AlbaranCliente');
+            Tools::log()->info('DEBUG: Found ' . count($pendientes) . ' pending customer delivery notes');
+
+            foreach ($pendientes as $alb) {
+                Tools::log()->info('DEBUG: Processing albaran: ' . $alb->codigo . ' for customer: ' . $alb->codcliente);
                 // Group by customer or not?
                 $albaranes = [];
                 if ($this->opciones['megafac_agrupar']) {
@@ -329,10 +349,13 @@ class Megafacturador extends Controller
 
                 if (empty($albaranes)) {
                     // Already invoiced when grouping, skip
+                    Tools::log()->info('DEBUG: Skipping albaran (empty/already invoiced)');
                 } elseif ($this->facturarAlbaranCliente($generator, $albaranes, $fecha, $ultimaFechaCliente, $tmpFile)) {
                     $total1++;
                     $recargar = true;
+                    Tools::log()->info('DEBUG: Successfully invoiced albaran group. Total: ' . $total1);
                 } else {
+                    Tools::log()->error('DEBUG: Failed to invoice albaran - BREAKING');
                     break;
                 }
             }
