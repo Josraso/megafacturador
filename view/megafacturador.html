@@ -1,0 +1,223 @@
+{include="header"}
+
+<!--
+This file is part of megafacturador
+Copyright (C) 2014-2017  Carlos Garcia Gomez  neorazorx@gmail.com
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+-->
+
+{if="$fsc->url_recarga"}
+<script type="text/javascript">
+    function recargar() {
+        window.location.href = '{$fsc->url_recarga}';
+    }
+    $(document).ready(function () {
+        setTimeout(recargar, 1000);
+    });
+</script>
+{/if}
+<script type="text/javascript">
+    function facturar() {
+        document.f_facturador.procesar.value = 'TRUE';
+        document.f_facturador.submit();
+    }
+</script>
+
+<div class="container-fluid">
+    <form name="f_facturador" class="form" action="{$fsc->url()}" method="post">
+        <input type="hidden" name="procesar" value="FALSE"/>
+        <div class="row">
+            <div class="col-sm-12">
+                <div class="page-header">
+                    <h1>
+                        <i class="fa fa-check-square-o" aria-hidden="true"></i>
+                        MegaFacturador
+                        <a href="{$fsc->url()}" class="btn btn-xs btn-default" title="Recargar la página">
+                            <i class="fa fa-refresh" aria-hidden="true"></i>
+                        </a>
+                        <span class="btn-group">
+                            {loop="$fsc->extensions"}
+                            {if="$value->type=='button'"}
+                            <a href="index.php?page={$value->from}{$value->params}" class="btn btn-xs btn-default">{$value->text}</a>
+                            {/if}
+                            {/loop}
+                        </span>
+                    </h1>
+                    <p class="help-block">
+                        Elige qué es lo que quieres facturar, cómo y pulsa el botón empezar.
+                        Se aprobarán los {#FS_ALBARANES#} seleccionados y se generarán las facturas.
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-sm-4">
+                <div class="panel panel-default">
+                    <div class="panel-heading">
+                        <h3 class="panel-title">¿Qué facturar?</h3>
+                    </div>
+                    <div class="panel-body">
+                        <div class="checkbox">
+                            <label>
+                                {if="$fsc->opciones['megafac_compras']"}
+                                <input type="checkbox" name="megafac_compras" value="TRUE" checked=""/>
+                                {else}
+                                <input type="checkbox" name="megafac_compras" value="TRUE"/>
+                                {/if}
+                                {#FS_ALBARANES#} de compra pendientes <span class="badge">{$fsc->total_pendientes('albaranesprov')}</span>
+                            </label>
+                        </div>
+                        <div class="checkbox">
+                            <label>
+                                {if="$fsc->opciones['megafac_ventas']"}
+                                <input type="checkbox" name="megafac_ventas" value="TRUE" checked=""/>
+                                {else}
+                                <input type="checkbox" name="megafac_ventas" value="TRUE"/>
+                                {/if}
+                                {#FS_ALBARANES#} de venta pendientes <span class="badge">{$fsc->total_pendientes('albaranescli')}</span>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <span class="text-capitalize">{#FS_SERIE#}:</span>
+                            <select name="megafac_codserie" class="form-control" onchange="this.form.submit();">
+                                <option value="">Todas</option>
+                                <option value="">------</option>
+                                {loop="$fsc->serie->all()"}
+                                {if="$fsc->opciones['megafac_codserie']==$value->codserie"}
+                                <option value="{$value->codserie}" selected="">{$value->descripcion}</option>
+                                {else}
+                                <option value="{$value->codserie}">{$value->descripcion}</option>
+                                {/if}
+                                {/loop}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            Hasta:
+                            <div class="input-group">
+                                <span class="input-group-addon">
+                                    <i class="fa fa-calendar" aria-hidden="true"></i>
+                                </span>
+                                <input type="text" name="megafac_hasta" value="{$fsc->opciones['megafac_hasta']}" class="form-control datepicker" autocomplete="off" onchange="this.form.submit();"/>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-4">
+                <div class="panel panel-default">
+                    <div class="panel-heading">
+                        <h3 class="panel-title">¿Cómo facturar?</h3>
+                    </div>
+                    <div class="panel-body">
+                        <div class="form-group">
+                            Facturar con fecha:
+                            <div class="input-group">
+                                <span class="input-group-addon">
+                                    <i class="fa fa-calendar" aria-hidden="true"></i>
+                                </span>
+                                <select name="megafac_fecha" class="form-control" onchange="this.form.submit();">
+                                    <option value="hoy">Hoy</option>
+                                    {if="$fsc->opciones['megafac_fecha']=='albaran'"}
+                                    <option value="albaran" selected="">El mismo día del {#FS_ALBARAN#}</option>
+                                    {else}
+                                    <option value="albaran">El mismo día del {#FS_ALBARAN#}</option>
+                                    {/if}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="checkbox">
+                            <label>
+                                {if="$fsc->opciones['megafac_agrupar']"}
+                                <input type="checkbox" name="megafac_agrupar" value="TRUE" checked=""/>
+                                {else}
+                                <input type="checkbox" name="megafac_agrupar" value="TRUE"/>
+                                {/if}
+                                &nbsp;<i class="fa fa-files-o" aria-hidden="true"></i>&nbsp;
+                                Agrupar {#FS_ALBARANES#} por cliente o proveedor
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-4">
+                <div class="panel panel-default">
+                    <div class="panel-heading">
+                        <h3 class="panel-title">¿Qué hacer después?</h3>
+                    </div>
+                    <div class="panel-body">
+                        <div class="checkbox">
+                            <label>
+                                {if="$fsc->opciones['megafac_email']"}
+                                <input type="checkbox" name="megafac_email" value="TRUE" checked=""/>
+                                {else}
+                                <input type="checkbox" name="megafac_email" value="TRUE"/>
+                                {/if}
+                                &nbsp;<i class="fa fa-envelope" aria-hidden="true"></i>&nbsp;
+                                Enviar por <b>email</b> las facturas de venta
+                                (<i>requiere el plugin plantillas_PDF</i>)
+                            </label>
+                        </div>
+                    </div>
+                    <div class="panel-footer text-right">
+                        <button class="btn btn-sm btn-primary" type="button" onclick="this.disabled = true;facturar()">
+                            <i class="fa fa-play" aria-hidden="true"></i>&nbsp; Empezar
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+    <div class="row">
+        <div class="col-sm-12">
+            <div class="page-header">
+                <h2>
+                    <i class="fa fa-info-circle" aria-hidden="true"></i> Otras opciones
+                </h2>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-sm-3">
+            <a href="{$fsc->url()}&genasientos=TRUE" class="btn btn-default btn-block">
+                <i class="fa fa-balance-scale" aria-hidden="true"></i>&nbsp; Generar asientos
+                {if="$fsc->numasientos>0"}
+                <span class="badge">{$fsc->numasientos}</span>
+                {/if}
+            </a>
+        </div>
+        <div class="col-sm-6">
+            <p class="help-block">
+                Genera los asientos de las facturas que no tengan. Si tienes activada
+                la contabilidad integrada, los asientos contables de las facturas se
+                generan automáticamente, pero si por algún motivo tienes facturas sin
+                asientos o quieres generarlos ahora, simplemente pulsa el botón.
+            </p>
+        </div>
+        <div class="col-sm-3">
+            {if="!$fsc->empresa->contintegrada"}
+            <a href="{$fsc->url()}&activar_contintegrada=TRUE" class="btn btn-block btn-warning">
+                <i class="fa fa-toggle-on" aria-hidden="true"></i>&nbsp;
+                Activar contabilidad integrada
+            </a>
+            <p class="help-block">
+                <i class="fa fa-info-circle" aria-hidden="true"></i>
+                Activa la contabilidad integrada para que los asientos se generen automáticamente.
+            </p>
+            {/if}
+        </div>
+    </div>
+</div>
+
+{include="footer"}
