@@ -21,9 +21,11 @@ namespace FacturaScripts\Plugins\Megafacturador\Controller;
 
 use FacturaScripts\Core\Base\Controller;
 use FacturaScripts\Core\Base\DataBase\DataBaseWhere;
+use FacturaScripts\Core\Base\ExportManager;
 use FacturaScripts\Core\Tools;
 use FacturaScripts\Dinamic\Lib\Accounting\AccountingAccounts;
 use FacturaScripts\Dinamic\Lib\BusinessDocumentGenerator;
+use FacturaScripts\Dinamic\Lib\Email\EmailTools;
 use FacturaScripts\Dinamic\Model\AlbaranCliente;
 use FacturaScripts\Dinamic\Model\AlbaranProveedor;
 use FacturaScripts\Dinamic\Model\Cliente;
@@ -82,6 +84,11 @@ class Megafacturador extends Controller
      * @var string
      */
     public $url_recarga;
+
+    /**
+     * @var FacturaCliente[]
+     */
+    private $facturasGeneradas = [];
 
     /**
      * Returns basic page attributes
@@ -451,6 +458,12 @@ class Megafacturador extends Controller
             return false;
         }
 
+        // Store generated invoice for email sending
+        $facturas = $generator->getLastDocs();
+        if (!empty($facturas)) {
+            $this->facturasGeneradas[] = $facturas[0];
+        }
+
         // CRITICAL: Mark lines as served and check if albaran is fully invoiced
         foreach ($albaranes as $alb) {
             $allServed = true;
@@ -634,18 +647,81 @@ class Megafacturador extends Controller
     }
 
     /**
-     * Redirect to send invoices page
+     * Send emails for all generated invoices
      */
     private function enviarFacturas(): void
     {
-        if ($this->permissions->onlyOwnerData === false) {
-            // Redirect to invoice list with filter to show today's invoices
-            // User can select them and send emails from there
-            $hoy = date('Y-m-d');
-            $this->redirect('ListFacturaCliente?activetab=List&fecha=' . $hoy);
-        } else {
+        if ($this->permissions->onlyOwnerData) {
             Tools::log()->error('send-invoices-access-denied');
+            return;
         }
+
+        if (empty($this->facturasGeneradas)) {
+            Tools::log()->warning('no-invoices-to-send');
+            return;
+        }
+
+        $enviados = 0;
+        $errores = 0;
+
+        foreach ($this->facturasGeneradas as $factura) {
+            // Get customer email
+            if (empty($factura->email)) {
+                Tools::log()->warning('invoice-without-email', ['%invoice%' => $factura->codigo]);
+                $errores++;
+                continue;
+            }
+
+            // Send email with invoice PDF attached
+            $emailTools = new EmailTools();
+            $mail = $emailTools->newMail();
+            $mail->addAddress($factura->email, $factura->nombrecliente);
+
+            // Subject
+            $empresa = new Empresa();
+            if ($empresa->loadFromCode($factura->idempresa)) {
+                $mail->Subject = $empresa->nombrecorto . ' - Factura ' . $factura->codigo;
+            } else {
+                $mail->Subject = 'Factura ' . $factura->codigo;
+            }
+
+            // Body
+            $mail->msgHTML(
+                '<p>Estimado/a <strong>' . $factura->nombrecliente . '</strong>,</p>' .
+                '<p>Adjuntamos la factura <strong>' . $factura->codigo . '</strong>.</p>' .
+                '<p>Atentamente,<br>' . ($empresa->nombrecorto ?? 'Su empresa') . '</p>'
+            );
+
+            // Attach PDF using export manager
+            try {
+                $exportManager = new ExportManager();
+                $exportManager->newDoc('PDF', $factura->modelClassName());
+                $exportManager->addModelPage($factura->modelClassName(), $factura->codigo, [], $factura->codigo);
+
+                $pdfPath = $exportManager->getDoc();
+                if ($pdfPath && file_exists($pdfPath)) {
+                    $mail->addAttachment($pdfPath, $factura->codigo . '.pdf');
+                }
+            } catch (\Exception $e) {
+                Tools::log()->error('pdf-generation-error', ['%error%' => $e->getMessage()]);
+            }
+
+            // Send
+            if ($mail->send()) {
+                $enviados++;
+                Tools::log()->info('invoice-email-sent', ['%invoice%' => $factura->codigo, '%email%' => $factura->email]);
+            } else {
+                $errores++;
+                Tools::log()->error('invoice-email-error', ['%invoice%' => $factura->codigo, '%error%' => $mail->ErrorInfo]);
+            }
+
+            // Clean up PDF file
+            if (isset($pdfPath) && file_exists($pdfPath)) {
+                @unlink($pdfPath);
+            }
+        }
+
+        Tools::log()->notice($enviados . ' emails sent, ' . $errores . ' errors.');
     }
 
     /**
