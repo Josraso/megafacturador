@@ -86,11 +86,6 @@ class Megafacturador extends Controller
     public $url_recarga;
 
     /**
-     * @var FacturaCliente[]
-     */
-    private $facturasGeneradas = [];
-
-    /**
      * Returns basic page attributes
      *
      * @return array
@@ -458,12 +453,6 @@ class Megafacturador extends Controller
             return false;
         }
 
-        // Store generated invoice for email sending
-        $facturas = $generator->getLastDocs();
-        if (!empty($facturas)) {
-            $this->facturasGeneradas[] = $facturas[0];
-        }
-
         // CRITICAL: Mark lines as served and check if albaran is fully invoiced
         foreach ($albaranes as $alb) {
             $allServed = true;
@@ -656,15 +645,32 @@ class Megafacturador extends Controller
             return;
         }
 
-        if (empty($this->facturasGeneradas)) {
-            Tools::log()->warning('no-invoices-to-send');
+        // Get invoices created in the last 5 minutes (recently generated)
+        $facturaModel = new FacturaCliente();
+        $hace5min = date('Y-m-d H:i:s', strtotime('-5 minutes'));
+
+        $where = [
+            new DataBaseWhere('fechaalta', $hace5min, '>=')
+        ];
+
+        // Apply same filters as megafacturador
+        if (!empty($this->opciones['megafac_codserie'])) {
+            $where[] = new DataBaseWhere('codserie', $this->opciones['megafac_codserie']);
+        }
+
+        $facturas = $facturaModel->all($where, ['fecha' => 'ASC'], 0, 0);
+
+        if (empty($facturas)) {
+            Tools::log()->warning('no-recent-invoices-to-send');
             return;
         }
+
+        Tools::log()->notice('Found ' . count($facturas) . ' invoices to send.');
 
         $enviados = 0;
         $errores = 0;
 
-        foreach ($this->facturasGeneradas as $factura) {
+        foreach ($facturas as $factura) {
             // Get customer email
             if (empty($factura->email)) {
                 Tools::log()->warning('invoice-without-email', ['%invoice%' => $factura->codigo]);
