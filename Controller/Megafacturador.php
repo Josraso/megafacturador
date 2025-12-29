@@ -270,11 +270,19 @@ class Megafacturador extends Controller
         // Get last invoice ordered by date DESC
         $facturas = $model->all([], ['fecha' => 'DESC'], 0, 1);
 
+        $ultimaFecha = null;
         if (!empty($facturas)) {
-            return $facturas[0]->fecha;
+            $ultimaFecha = $facturas[0]->fecha;
+            Tools::log()->info('Ultima fecha factura', [
+                'modelo' => $modelName,
+                'fecha' => $ultimaFecha,
+                'codigo' => $facturas[0]->codigo
+            ]);
+        } else {
+            Tools::log()->info('No hay facturas previas', ['modelo' => $modelName]);
         }
 
-        return null;
+        return $ultimaFecha;
     }
 
     /**
@@ -420,8 +428,19 @@ class Megafacturador extends Controller
             // CRITICAL: Check if albaran is older than last invoice
             $fechaFactura = $prototype->fecha;
 
+            Tools::log()->info('Checking delayed albaran', [
+                'prototype_fecha' => $prototype->fecha,
+                'ultima_factura' => $ultimaFechaFactura,
+                'comparacion' => ($ultimaFechaFactura && $prototype->fecha < $ultimaFechaFactura) ? 'ATRASADO' : 'OK'
+            ]);
+
             // If albaran is delayed (older than last invoice)
             if ($ultimaFechaFactura && $prototype->fecha < $ultimaFechaFactura) {
+                Tools::log()->warning('Albaran atrasado detectado', [
+                    'albaran_fecha' => $prototype->fecha,
+                    'ultima_factura' => $ultimaFechaFactura
+                ]);
+
                 // Find first valid date from ALL pending albaranes
                 $todosAlbaranes = $this->albaranesPendientes('AlbaranCliente');
                 $fechaEncontrada = false;
@@ -430,6 +449,7 @@ class Megafacturador extends Controller
                     if ($alb->fecha >= $ultimaFechaFactura) {
                         $fechaFactura = $alb->fecha;
                         $fechaEncontrada = true;
+                        Tools::log()->notice('Fecha válida encontrada', ['fecha' => $fechaFactura]);
                         break;
                     }
                 }
@@ -437,9 +457,11 @@ class Megafacturador extends Controller
                 // If no valid date found in pending albaranes, use configured limit date
                 if (!$fechaEncontrada && !empty($this->opciones['megafac_hasta'])) {
                     $fechaFactura = $this->opciones['megafac_hasta'];
+                    Tools::log()->notice('Usando fecha límite', ['fecha' => $fechaFactura]);
                 }
             }
 
+            Tools::log()->info('Fecha final para factura', ['fecha' => $fechaFactura]);
             $properties['fecha'] = $fechaFactura;
         }
 
@@ -552,8 +574,19 @@ class Megafacturador extends Controller
             // CRITICAL: Check if albaran is older than last invoice
             $fechaFactura = $prototype->fecha;
 
+            Tools::log()->info('Checking delayed albaran proveedor', [
+                'prototype_fecha' => $prototype->fecha,
+                'ultima_factura' => $ultimaFechaFactura,
+                'comparacion' => ($ultimaFechaFactura && $prototype->fecha < $ultimaFechaFactura) ? 'ATRASADO' : 'OK'
+            ]);
+
             // If albaran is delayed (older than last invoice)
             if ($ultimaFechaFactura && $prototype->fecha < $ultimaFechaFactura) {
+                Tools::log()->warning('Albaran proveedor atrasado detectado', [
+                    'albaran_fecha' => $prototype->fecha,
+                    'ultima_factura' => $ultimaFechaFactura
+                ]);
+
                 // Find first valid date from ALL pending albaranes
                 $todosAlbaranes = $this->albaranesPendientes('AlbaranProveedor');
                 $fechaEncontrada = false;
@@ -562,6 +595,7 @@ class Megafacturador extends Controller
                     if ($alb->fecha >= $ultimaFechaFactura) {
                         $fechaFactura = $alb->fecha;
                         $fechaEncontrada = true;
+                        Tools::log()->notice('Fecha válida encontrada proveedor', ['fecha' => $fechaFactura]);
                         break;
                     }
                 }
@@ -569,9 +603,11 @@ class Megafacturador extends Controller
                 // If no valid date found in pending albaranes, use configured limit date
                 if (!$fechaEncontrada && !empty($this->opciones['megafac_hasta'])) {
                     $fechaFactura = $this->opciones['megafac_hasta'];
+                    Tools::log()->notice('Usando fecha límite proveedor', ['fecha' => $fechaFactura]);
                 }
             }
 
+            Tools::log()->info('Fecha final para factura proveedor', ['fecha' => $fechaFactura]);
             $properties['fecha'] = $fechaFactura;
         }
 
