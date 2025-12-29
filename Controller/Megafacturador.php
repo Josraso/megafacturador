@@ -417,27 +417,26 @@ class Megafacturador extends Controller
             // Use custom date (today)
             $properties['fecha'] = $fecha;
         } else {
-            // CRITICAL: Check if any albaran in the batch is older than last invoice
-            // If so, use the first valid date (oldest from current batch)
+            // CRITICAL: Check if albaran is older than last invoice
             $fechaFactura = $prototype->fecha;
 
-            // Find oldest albaran that would cause chronological issues
-            $tieneAtrasado = false;
-            foreach ($albaranes as $alb) {
-                if ($ultimaFechaFactura && $alb->fecha < $ultimaFechaFactura) {
-                    $tieneAtrasado = true;
-                    break;
-                }
-            }
+            // If albaran is delayed (older than last invoice)
+            if ($ultimaFechaFactura && $prototype->fecha < $ultimaFechaFactura) {
+                // Find first valid date from ALL pending albaranes
+                $todosAlbaranes = $this->albaranesPendientes('AlbaranCliente');
+                $fechaEncontrada = false;
 
-            // If there's a delayed albaran, use first available valid date
-            if ($tieneAtrasado) {
-                // Find first date >= last invoice date
-                foreach ($albaranes as $alb) {
-                    if (!$ultimaFechaFactura || $alb->fecha >= $ultimaFechaFactura) {
+                foreach ($todosAlbaranes as $alb) {
+                    if ($alb->fecha >= $ultimaFechaFactura) {
                         $fechaFactura = $alb->fecha;
+                        $fechaEncontrada = true;
                         break;
                     }
+                }
+
+                // If no valid date found in pending albaranes, use configured limit date
+                if (!$fechaEncontrada && !empty($this->opciones['megafac_hasta'])) {
+                    $fechaFactura = $this->opciones['megafac_hasta'];
                 }
             }
 
@@ -550,27 +549,26 @@ class Megafacturador extends Controller
             // Use custom date (today)
             $properties['fecha'] = $fecha;
         } else {
-            // CRITICAL: Check if any albaran in the batch is older than last invoice
-            // If so, use the first valid date (oldest from current batch)
+            // CRITICAL: Check if albaran is older than last invoice
             $fechaFactura = $prototype->fecha;
 
-            // Find oldest albaran that would cause chronological issues
-            $tieneAtrasado = false;
-            foreach ($albaranes as $alb) {
-                if ($ultimaFechaFactura && $alb->fecha < $ultimaFechaFactura) {
-                    $tieneAtrasado = true;
-                    break;
-                }
-            }
+            // If albaran is delayed (older than last invoice)
+            if ($ultimaFechaFactura && $prototype->fecha < $ultimaFechaFactura) {
+                // Find first valid date from ALL pending albaranes
+                $todosAlbaranes = $this->albaranesPendientes('AlbaranProveedor');
+                $fechaEncontrada = false;
 
-            // If there's a delayed albaran, use first available valid date
-            if ($tieneAtrasado) {
-                // Find first date >= last invoice date
-                foreach ($albaranes as $alb) {
-                    if (!$ultimaFechaFactura || $alb->fecha >= $ultimaFechaFactura) {
+                foreach ($todosAlbaranes as $alb) {
+                    if ($alb->fecha >= $ultimaFechaFactura) {
                         $fechaFactura = $alb->fecha;
+                        $fechaEncontrada = true;
                         break;
                     }
+                }
+
+                // If no valid date found in pending albaranes, use configured limit date
+                if (!$fechaEncontrada && !empty($this->opciones['megafac_hasta'])) {
+                    $fechaFactura = $this->opciones['megafac_hasta'];
                 }
             }
 
