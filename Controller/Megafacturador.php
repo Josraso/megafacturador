@@ -286,15 +286,17 @@ class Megafacturador extends Controller
     {
         $recargar = false;
 
-        // Initialize session array for generated invoices on first run
-        $continuar = $this->request->get('procesar_continuar');
-        Tools::log()->info('DEBUG: generarFacturas() - procesar_continuar: ' . ($continuar ? 'TRUE' : 'FALSE'));
-
-        if (!$continuar) {
-            $_SESSION['megafac_facturas_generadas'] = [];
-            Tools::log()->info('DEBUG: Initialized empty session array');
+        // Use a temporary file to store invoice IDs across page reloads
+        $runId = $this->request->get('megafac_runid');
+        if (empty($runId)) {
+            // First run - create new ID and file
+            $runId = 'mf_' . time() . '_' . rand(1000, 9999);
+            $tmpFile = sys_get_temp_dir() . '/megafac_' . $runId . '.txt';
+            file_put_contents($tmpFile, '');
+            Tools::log()->info('DEBUG: New run - created temp file: ' . $tmpFile);
         } else {
-            Tools::log()->info('DEBUG: Continuing - session has: ' . (isset($_SESSION['megafac_facturas_generadas']) ? count($_SESSION['megafac_facturas_generadas']) : 'NOT SET'));
+            $tmpFile = sys_get_temp_dir() . '/megafac_' . $runId . '.txt';
+            Tools::log()->info('DEBUG: Continuing run - using temp file: ' . $tmpFile);
         }
 
         // Determine invoice date based on user preference
@@ -327,7 +329,7 @@ class Megafacturador extends Controller
 
                 if (empty($albaranes)) {
                     // Already invoiced when grouping, skip
-                } elseif ($this->facturarAlbaranCliente($generator, $albaranes, $fecha, $ultimaFechaCliente)) {
+                } elseif ($this->facturarAlbaranCliente($generator, $albaranes, $fecha, $ultimaFechaCliente, $tmpFile)) {
                     $total1++;
                     $recargar = true;
                 } else {
@@ -356,7 +358,7 @@ class Megafacturador extends Controller
 
                 if (empty($albaranes)) {
                     // Already invoiced when grouping, skip
-                } elseif ($this->facturarAlbaranProveedor($generator, $albaranes, $fecha, $ultimaFechaProveedor)) {
+                } elseif ($this->facturarAlbaranProveedor($generator, $albaranes, $fecha, $ultimaFechaProveedor, $tmpFile)) {
                     $total2++;
                     $recargar = true;
                 } else {
@@ -372,12 +374,16 @@ class Megafacturador extends Controller
         if (!empty($errors)) {
             Tools::log()->error('Errors occurred. Process stopped.');
         } elseif ($recargar) {
-            $this->url_recarga = $this->url() . '?procesar=TRUE&procesar_continuar=TRUE';
+            $this->url_recarga = $this->url() . '?procesar=TRUE&megafac_runid=' . $runId;
             Tools::log()->notice('Reloading...');
         } else {
             Tools::log()->notice('Finished.');
             if ($this->opciones['megafac_email']) {
-                $this->enviarFacturas();
+                $this->enviarFacturas($tmpFile);
+            }
+            // Clean up temp file
+            if (file_exists($tmpFile)) {
+                @unlink($tmpFile);
             }
         }
     }
@@ -389,10 +395,11 @@ class Megafacturador extends Controller
      * @param array $albaranes
      * @param string|null $fecha
      * @param string|null $ultimaFechaFactura
+     * @param string $tmpFile
      *
      * @return bool
      */
-    private function facturarAlbaranCliente($generator, array $albaranes, ?string $fecha, ?string $ultimaFechaFactura): bool
+    private function facturarAlbaranCliente($generator, array $albaranes, ?string $fecha, ?string $ultimaFechaFactura, string $tmpFile): bool
     {
         if (empty($albaranes)) {
             return false;
@@ -464,15 +471,13 @@ class Megafacturador extends Controller
             return false;
         }
 
-        // Store generated invoice ID in session for later email sending
+        // Store generated invoice ID in temp file for later email sending
         $facturas = $generator->getLastDocs();
         if (!empty($facturas)) {
             $factura = $facturas[0];
-            if (!isset($_SESSION['megafac_facturas_generadas'])) {
-                $_SESSION['megafac_facturas_generadas'] = [];
-            }
-            $_SESSION['megafac_facturas_generadas'][] = $factura->primaryColumnValue();
-            Tools::log()->info('DEBUG: Added invoice ID to session: ' . $factura->primaryColumnValue() . ' | Total in session: ' . count($_SESSION['megafac_facturas_generadas']));
+            $facturaId = $factura->primaryColumnValue();
+            file_put_contents($tmpFile, $facturaId . "\n", FILE_APPEND);
+            Tools::log()->info('DEBUG: Wrote invoice ID to file: ' . $facturaId . ' | File: ' . $tmpFile);
         }
 
         // CRITICAL: Mark lines as served and check if albaran is fully invoiced
@@ -532,10 +537,11 @@ class Megafacturador extends Controller
      * @param array $albaranes
      * @param string|null $fecha
      * @param string|null $ultimaFechaFactura
+     * @param string $tmpFile
      *
      * @return bool
      */
-    private function facturarAlbaranProveedor($generator, array $albaranes, ?string $fecha, ?string $ultimaFechaFactura): bool
+    private function facturarAlbaranProveedor($generator, array $albaranes, ?string $fecha, ?string $ultimaFechaFactura, string $tmpFile): bool
     {
         if (empty($albaranes)) {
             return false;
@@ -607,14 +613,12 @@ class Megafacturador extends Controller
             return false;
         }
 
-        // Store generated invoice ID in session (for potential future use)
+        // Store generated invoice ID in temp file (for potential future use)
         $facturas = $generator->getLastDocs();
         if (!empty($facturas)) {
             $factura = $facturas[0];
-            if (!isset($_SESSION['megafac_facturas_generadas'])) {
-                $_SESSION['megafac_facturas_generadas'] = [];
-            }
-            $_SESSION['megafac_facturas_generadas'][] = $factura->primaryColumnValue();
+            $facturaId = $factura->primaryColumnValue();
+            file_put_contents($tmpFile, $facturaId . "\n", FILE_APPEND);
         }
 
         // CRITICAL: Mark lines as served and check if albaran is fully invoiced
@@ -669,26 +673,35 @@ class Megafacturador extends Controller
 
     /**
      * Send emails for all generated invoices in this megafacturador session
+     *
+     * @param string $tmpFile
      */
-    private function enviarFacturas(): void
+    private function enviarFacturas(string $tmpFile): void
     {
         if ($this->permissions->onlyOwnerData) {
             Tools::log()->error('send-invoices-access-denied');
             return;
         }
 
-        // Get list of generated invoice IDs from session
-        Tools::log()->info('DEBUG: Checking session for invoices. Session isset: ' . (isset($_SESSION['megafac_facturas_generadas']) ? 'YES' : 'NO'));
-        if (isset($_SESSION['megafac_facturas_generadas'])) {
-            Tools::log()->info('DEBUG: Session content: ' . print_r($_SESSION['megafac_facturas_generadas'], true));
+        // Read invoice IDs from temp file
+        Tools::log()->info('DEBUG: Reading invoice IDs from temp file: ' . $tmpFile);
+
+        if (!file_exists($tmpFile)) {
+            Tools::log()->warning('no-invoices-to-send - temp file not found');
+            return;
         }
 
-        if (empty($_SESSION['megafac_facturas_generadas'])) {
+        $fileContent = file_get_contents($tmpFile);
+        $facturasIds = array_filter(explode("\n", trim($fileContent)));
+
+        Tools::log()->info('DEBUG: File content: ' . $fileContent);
+        Tools::log()->info('DEBUG: Found ' . count($facturasIds) . ' invoice IDs');
+
+        if (empty($facturasIds)) {
             Tools::log()->warning('no-invoices-to-send');
             return;
         }
 
-        $facturasIds = $_SESSION['megafac_facturas_generadas'];
         Tools::log()->notice('Found ' . count($facturasIds) . ' invoices to send from this session.');
 
         // Load invoices by their IDs
@@ -698,6 +711,9 @@ class Megafacturador extends Controller
             $factura = $facturaModel->get($id);
             if ($factura) {
                 $facturas[] = $factura;
+                Tools::log()->info('DEBUG: Loaded invoice: ' . $factura->codigo);
+            } else {
+                Tools::log()->warning('DEBUG: Could not load invoice with ID: ' . $id);
             }
         }
 
@@ -762,9 +778,6 @@ class Megafacturador extends Controller
         }
 
         Tools::log()->notice($enviados . ' emails sent, ' . $errores . ' errors.');
-
-        // Clear session data after sending emails
-        unset($_SESSION['megafac_facturas_generadas']);
     }
 
     /**
