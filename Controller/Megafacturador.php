@@ -178,9 +178,9 @@ class Megafacturador extends Controller
         $this->empresa->contintegrada = true;
 
         if ($this->empresa->save()) {
-            $this->toolBox()->i18nLog()->notice('record-updated-correctly');
+            Tools::log()->notice('record-updated-correctly');
         } else {
-            $this->toolBox()->i18nLog()->error('record-save-error');
+            Tools::log()->error('record-save-error');
         }
     }
 
@@ -290,7 +290,7 @@ class Megafacturador extends Controller
                 }
             }
 
-            $this->toolBox()->i18nLog()->notice($total1 . ' delivery notes invoiced.');
+            Tools::log()->notice($total1 . ' delivery notes invoiced.');
         }
 
         if ($this->opciones['megafac_compras']) {
@@ -319,17 +319,18 @@ class Megafacturador extends Controller
                 }
             }
 
-            $this->toolBox()->i18nLog()->notice($total2 . ' supplier delivery notes invoiced.');
+            Tools::log()->notice($total2 . ' supplier delivery notes invoiced.');
         }
 
         // Reload?
-        if (!empty($this->toolBox()->log()->read('', ['critical', 'error']))) {
-            $this->toolBox()->i18nLog()->error('Errors occurred. Process stopped.');
+        $errors = Tools::log()->read('', ['critical', 'error']);
+        if (!empty($errors)) {
+            Tools::log()->error('Errors occurred. Process stopped.');
         } elseif ($recargar) {
             $this->url_recarga = $this->url() . '&procesar=TRUE';
-            $this->toolBox()->i18nLog()->notice('Reloading...');
+            Tools::log()->notice('Reloading...');
         } else {
-            $this->toolBox()->i18nLog()->notice('Finished.');
+            Tools::log()->notice('Finished.');
             if ($this->opciones['megafac_email']) {
                 $this->enviarFacturas();
             }
@@ -394,7 +395,7 @@ class Megafacturador extends Controller
         if ($this->permissions->onlyOwnerData === false) {
             $this->redirect('SendMail?model=FacturaCliente');
         } else {
-            $this->toolBox()->i18nLog()->error('access-denied');
+            Tools::log()->error('access-denied');
         }
     }
 
@@ -419,7 +420,7 @@ class Megafacturador extends Controller
                 }
             }
         }
-        $this->toolBox()->i18nLog()->notice($nuevos . ' accounting entries generated for sales invoices.');
+        Tools::log()->notice($nuevos . ' accounting entries generated for sales invoices.');
 
         $nuevos2 = 0;
         $facturaProveedor = new FacturaProveedor();
@@ -434,14 +435,15 @@ class Megafacturador extends Controller
                 }
             }
         }
-        $this->toolBox()->i18nLog()->notice($nuevos2 . ' accounting entries generated for purchase invoices.');
+        Tools::log()->notice($nuevos2 . ' accounting entries generated for purchase invoices.');
 
         // Reload?
-        if (!empty($this->toolBox()->log()->read('', ['critical', 'error']))) {
-            $this->toolBox()->i18nLog()->error('Errors occurred. Process stopped.');
+        $errors = Tools::log()->read('', ['critical', 'error']);
+        if (!empty($errors)) {
+            Tools::log()->error('Errors occurred. Process stopped.');
         } elseif ($this->numAsientosAGenerar() > 0) {
             $this->url_recarga = $this->url() . '&genasientos=TRUE';
-            $this->toolBox()->i18nLog()->notice('Reloading...');
+            Tools::log()->notice('Reloading...');
         }
     }
 
