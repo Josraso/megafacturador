@@ -389,11 +389,33 @@ class Megafacturador extends Controller
             return false;
         }
 
-        // CRITICAL: Mark all albaranes as invoiced (generator doesn't do this automatically)
+        // CRITICAL: Update 'servido' field on all albaran lines to mark as invoiced
         foreach ($albaranes as $alb) {
-            $alb->editable = false;
-            if (!$alb->save()) {
-                Tools::log()->warning('failed-to-mark-albaran-as-invoiced', ['%code%' => $alb->codigo]);
+            // Reload lines to get fresh data
+            $lines = $alb->getLines();
+            $allServed = true;
+
+            foreach ($lines as $line) {
+                // Update servido with the invoiced quantity
+                if (isset($quantities[$line->primaryColumnValue()])) {
+                    $line->servido += $quantities[$line->primaryColumnValue()];
+                    if (!$line->save()) {
+                        Tools::log()->warning('failed-to-update-line-servido', ['%line%' => $line->primaryColumnValue()]);
+                    }
+                }
+
+                // Check if line is fully served
+                if ($line->servido < $line->cantidad) {
+                    $allServed = false;
+                }
+            }
+
+            // If all lines are fully served, mark albaran as non-editable
+            if ($allServed) {
+                $alb->editable = false;
+                if (!$alb->save()) {
+                    Tools::log()->warning('failed-to-mark-albaran-as-non-editable', ['%code%' => $alb->codigo]);
+                }
             }
         }
 
@@ -446,11 +468,33 @@ class Megafacturador extends Controller
             return false;
         }
 
-        // CRITICAL: Mark all albaranes as invoiced (generator doesn't do this automatically)
+        // CRITICAL: Update 'servido' field on all albaran lines to mark as invoiced
         foreach ($albaranes as $alb) {
-            $alb->editable = false;
-            if (!$alb->save()) {
-                Tools::log()->warning('failed-to-mark-albaran-as-invoiced', ['%code%' => $alb->codigo]);
+            // Reload lines to get fresh data
+            $lines = $alb->getLines();
+            $allServed = true;
+
+            foreach ($lines as $line) {
+                // Update servido with the invoiced quantity
+                if (isset($quantities[$line->primaryColumnValue()])) {
+                    $line->servido += $quantities[$line->primaryColumnValue()];
+                    if (!$line->save()) {
+                        Tools::log()->warning('failed-to-update-line-servido', ['%line%' => $line->primaryColumnValue()]);
+                    }
+                }
+
+                // Check if line is fully served
+                if ($line->servido < $line->cantidad) {
+                    $allServed = false;
+                }
+            }
+
+            // If all lines are fully served, mark albaran as non-editable
+            if ($allServed) {
+                $alb->editable = false;
+                if (!$alb->save()) {
+                    Tools::log()->warning('failed-to-mark-albaran-as-non-editable', ['%code%' => $alb->codigo]);
+                }
             }
         }
 
