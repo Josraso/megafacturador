@@ -382,6 +382,12 @@ class Megafacturador extends Controller
             return false;
         }
 
+        // CRITICAL: Mark first albaran as invoiced (not editable anymore)
+        $prototype->editable = false;
+        if (!$prototype->save()) {
+            Tools::log()->error('failed-to-update-albaran-status');
+        }
+
         // If grouping multiple albaranes, add lines from the rest
         if (count($albaranes) > 1) {
             $facturas = $generator->getLastDocs();
@@ -395,6 +401,7 @@ class Megafacturador extends Controller
             // Add lines from remaining albaranes (skip first, already added)
             for ($i = 1; $i < count($albaranes); $i++) {
                 $alb = $albaranes[$i];
+
                 foreach ($alb->getLines() as $line) {
                     $newLine = $factura->getNewLine();
                     $newLine->loadFromData($line->toArray());
@@ -403,6 +410,12 @@ class Megafacturador extends Controller
                         Tools::log()->error('failed-to-add-line-to-invoice');
                         return false;
                     }
+                }
+
+                // CRITICAL: Mark this albaran as invoiced too
+                $alb->editable = false;
+                if (!$alb->save()) {
+                    Tools::log()->error('failed-to-update-albaran-status');
                 }
             }
 
@@ -455,6 +468,12 @@ class Megafacturador extends Controller
             return false;
         }
 
+        // CRITICAL: Mark first albaran as invoiced (not editable anymore)
+        $prototype->editable = false;
+        if (!$prototype->save()) {
+            Tools::log()->error('failed-to-update-albaran-status');
+        }
+
         // If grouping multiple albaranes, add lines from the rest
         if (count($albaranes) > 1) {
             $facturas = $generator->getLastDocs();
@@ -468,6 +487,7 @@ class Megafacturador extends Controller
             // Add lines from remaining albaranes (skip first, already added)
             for ($i = 1; $i < count($albaranes); $i++) {
                 $alb = $albaranes[$i];
+
                 foreach ($alb->getLines() as $line) {
                     $newLine = $factura->getNewLine();
                     $newLine->loadFromData($line->toArray());
@@ -476,6 +496,12 @@ class Megafacturador extends Controller
                         Tools::log()->error('failed-to-add-line-to-invoice');
                         return false;
                     }
+                }
+
+                // CRITICAL: Mark this albaran as invoiced too
+                $alb->editable = false;
+                if (!$alb->save()) {
+                    Tools::log()->error('failed-to-update-albaran-status');
                 }
             }
 
