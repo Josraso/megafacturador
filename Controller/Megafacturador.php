@@ -327,7 +327,7 @@ class Megafacturador extends Controller
         if (!empty($errors)) {
             Tools::log()->error('Errors occurred. Process stopped.');
         } elseif ($recargar) {
-            $this->url_recarga = $this->url() . '&procesar=TRUE';
+            $this->url_recarga = $this->url() . '?procesar=TRUE';
             Tools::log()->notice('Reloading...');
         } else {
             Tools::log()->notice('Finished.');
@@ -476,7 +476,7 @@ class Megafacturador extends Controller
         if (!empty($errors)) {
             Tools::log()->error('Errors occurred. Process stopped.');
         } elseif ($this->numAsientosAGenerar() > 0) {
-            $this->url_recarga = $this->url() . '&genasientos=TRUE';
+            $this->url_recarga = $this->url() . '?genasientos=TRUE';
             Tools::log()->notice('Reloading...');
         }
     }
