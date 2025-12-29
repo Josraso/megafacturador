@@ -1,0 +1,202 @@
+{#
+This file is part of megafacturador
+Copyright (C) 2014-2025 Carlos Garcia Gomez <neorazorx@gmail.com>
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as
+published by the Free Software Foundation, either version 3 of the
+License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+#}
+
+{% extends "Master/MenuTemplate.html.twig" %}
+
+{% block body %}
+    {% if fsc.url_recarga %}
+        <script type="text/javascript">
+            function recargar() {
+                window.location.href = '{{ fsc.url_recarga | raw }}';
+            }
+            $(document).ready(function () {
+                setTimeout(recargar, 1000);
+            });
+        </script>
+    {% endif %}
+
+    <script type="text/javascript">
+        function facturar() {
+            document.f_facturador.procesar.value = 'TRUE';
+            document.f_facturador.submit();
+        }
+    </script>
+
+    <div class="container-fluid">
+        <form name="f_facturador" class="form" action="{{ fsc.url() }}" method="post">
+            {{ formToken() }}
+            <input type="hidden" name="procesar" value="FALSE"/>
+            <div class="row">
+                <div class="col-sm-12">
+                    <div class="page-header">
+                        <h1>
+                            <i class="fas fa-magic" aria-hidden="true"></i>
+                            MegaFacturador
+                            <a href="{{ fsc.url() }}" class="btn btn-sm btn-outline-secondary" title="{{ i18n.trans('refresh') }}">
+                                <i class="fas fa-sync" aria-hidden="true"></i>
+                            </a>
+                        </h1>
+                        <p class="text-muted">
+                            Elige qué es lo que quieres facturar, cómo y pulsa el botón empezar.
+                            Se aprobarán los albaranes seleccionados y se generarán las facturas.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-lg-4">
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">¿Qué facturar?</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-check mb-3">
+                                <input type="checkbox" name="megafac_compras" value="TRUE"
+                                       class="form-check-input" id="megafac_compras"
+                                       {% if fsc.opciones.megafac_compras %}checked{% endif %}>
+                                <label class="form-check-label" for="megafac_compras">
+                                    Albaranes de compra pendientes
+                                    <span class="badge bg-secondary">{{ fsc.totalPendientes('AlbaranProveedor') }}</span>
+                                </label>
+                            </div>
+                            <div class="form-check mb-3">
+                                <input type="checkbox" name="megafac_ventas" value="TRUE"
+                                       class="form-check-input" id="megafac_ventas"
+                                       {% if fsc.opciones.megafac_ventas %}checked{% endif %}>
+                                <label class="form-check-label" for="megafac_ventas">
+                                    Albaranes de venta pendientes
+                                    <span class="badge bg-secondary">{{ fsc.totalPendientes('AlbaranCliente') }}</span>
+                                </label>
+                            </div>
+                            <div class="mb-3">
+                                <label for="megafac_codserie" class="form-label">{{ i18n.trans('serie') }}:</label>
+                                <select name="megafac_codserie" id="megafac_codserie" class="form-select" onchange="this.form.submit();">
+                                    <option value="">{{ i18n.trans('all') }}</option>
+                                    <option value="">------</option>
+                                    {% for serie in fsc.serie.all() %}
+                                        <option value="{{ serie.codserie }}"
+                                                {% if fsc.opciones.megafac_codserie == serie.codserie %}selected{% endif %}>
+                                            {{ serie.descripcion }}
+                                        </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label for="megafac_hasta" class="form-label">{{ i18n.trans('until') }}:</label>
+                                <input type="date" name="megafac_hasta" id="megafac_hasta"
+                                       value="{{ fsc.opciones.megafac_hasta }}"
+                                       class="form-control" autocomplete="off"
+                                       onchange="this.form.submit();"/>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">¿Cómo facturar?</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label for="megafac_fecha" class="form-label">Facturar con fecha:</label>
+                                <select name="megafac_fecha" id="megafac_fecha" class="form-select" onchange="this.form.submit();">
+                                    <option value="hoy" {% if fsc.opciones.megafac_fecha != 'albaran' %}selected{% endif %}>
+                                        {{ i18n.trans('today') }}
+                                    </option>
+                                    <option value="albaran" {% if fsc.opciones.megafac_fecha == 'albaran' %}selected{% endif %}>
+                                        El mismo día del albarán
+                                    </option>
+                                </select>
+                            </div>
+                            <div class="form-check">
+                                <input type="checkbox" name="megafac_agrupar" value="TRUE"
+                                       class="form-check-input" id="megafac_agrupar"
+                                       {% if fsc.opciones.megafac_agrupar %}checked{% endif %}>
+                                <label class="form-check-label" for="megafac_agrupar">
+                                    <i class="fas fa-layer-group" aria-hidden="true"></i>
+                                    Agrupar albaranes por cliente o proveedor
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">¿Qué hacer después?</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="form-check">
+                                <input type="checkbox" name="megafac_email" value="TRUE"
+                                       class="form-check-input" id="megafac_email"
+                                       {% if fsc.opciones.megafac_email %}checked{% endif %}>
+                                <label class="form-check-label" for="megafac_email">
+                                    <i class="fas fa-envelope" aria-hidden="true"></i>
+                                    Enviar por <b>email</b> las facturas de venta
+                                </label>
+                            </div>
+                        </div>
+                        <div class="card-footer text-end">
+                            <button class="btn btn-primary" type="button" onclick="this.disabled = true; facturar()">
+                                <i class="fas fa-play" aria-hidden="true"></i> Empezar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </form>
+        <div class="row">
+            <div class="col-sm-12">
+                <h2 class="mt-4">
+                    <i class="fas fa-info-circle" aria-hidden="true"></i> Otras opciones
+                </h2>
+                <hr/>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-4 mb-3">
+                <a href="{{ fsc.url() }}&genasientos=TRUE" class="btn btn-outline-secondary w-100">
+                    <i class="fas fa-balance-scale" aria-hidden="true"></i> Generar asientos
+                    {% if fsc.numasientos > 0 %}
+                        <span class="badge bg-danger">{{ fsc.numasientos }}</span>
+                    {% endif %}
+                </a>
+            </div>
+            <div class="col-md-4 mb-3">
+                <p class="text-muted small">
+                    Genera los asientos de las facturas que no tengan. Si tienes activada
+                    la contabilidad integrada, los asientos contables de las facturas se
+                    generan automáticamente, pero si por algún motivo tienes facturas sin
+                    asientos o quieres generarlos ahora, simplemente pulsa el botón.
+                </p>
+            </div>
+            <div class="col-md-4 mb-3">
+                {% if not fsc.empresa.contintegrada %}
+                    <a href="{{ fsc.url() }}&activar_contintegrada=TRUE" class="btn btn-warning w-100">
+                        <i class="fas fa-toggle-on" aria-hidden="true"></i>
+                        Activar contabilidad integrada
+                    </a>
+                    <p class="text-muted small mt-2">
+                        <i class="fas fa-info-circle" aria-hidden="true"></i>
+                        Activa la contabilidad integrada para que los asientos se generen automáticamente.
+                    </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+{% endblock %}
