@@ -361,28 +361,59 @@ class Megafacturador extends Controller
         // Use first albaran as prototype
         $prototype = $albaranes[0];
 
-        // Collect ALL lines from ALL albaranes
-        $newLines = [];
-        foreach ($albaranes as $alb) {
-            foreach ($alb->getLines() as $line) {
-                $newLines[] = $line;
-            }
-        }
-
         // Prepare properties with custom date if needed
         $properties = [];
         if ($fecha) {
             $properties['fecha'] = $fecha;
         }
 
-        // Call generate with correct parameters
-        return $generator->generate(
+        // Generate invoice from first albaran (copies all its lines)
+        $success = $generator->generate(
             $prototype,           // First albaran as prototype
             'FacturaCliente',     // Class name as STRING
-            $newLines,            // All combined lines
+            [],                   // EMPTY = copy all lines from prototype
             [],                   // No quantity overrides
             $properties           // Additional properties (date)
         );
+
+        if (!$success) {
+            Tools::log()->error('failed-to-generate-invoice-from-albaran',
+                ['%id%' => $prototype->codigo]);
+            return false;
+        }
+
+        // If grouping multiple albaranes, add lines from the rest
+        if (count($albaranes) > 1) {
+            $facturas = $generator->getLastDocs();
+            if (empty($facturas)) {
+                Tools::log()->error('no-invoice-generated');
+                return false;
+            }
+
+            $factura = $facturas[0];
+
+            // Add lines from remaining albaranes (skip first, already added)
+            for ($i = 1; $i < count($albaranes); $i++) {
+                $alb = $albaranes[$i];
+                foreach ($alb->getLines() as $line) {
+                    $newLine = $factura->getNewLine();
+                    $newLine->loadFromData($line->toArray());
+                    $newLine->idalbaran = null; // Reset albaran reference
+                    if (!$newLine->save()) {
+                        Tools::log()->error('failed-to-add-line-to-invoice');
+                        return false;
+                    }
+                }
+            }
+
+            // Recalculate totals and save
+            if (!$factura->save()) {
+                Tools::log()->error('failed-to-save-invoice');
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -403,28 +434,59 @@ class Megafacturador extends Controller
         // Use first albaran as prototype
         $prototype = $albaranes[0];
 
-        // Collect ALL lines from ALL albaranes
-        $newLines = [];
-        foreach ($albaranes as $alb) {
-            foreach ($alb->getLines() as $line) {
-                $newLines[] = $line;
-            }
-        }
-
         // Prepare properties with custom date if needed
         $properties = [];
         if ($fecha) {
             $properties['fecha'] = $fecha;
         }
 
-        // Call generate with correct parameters
-        return $generator->generate(
+        // Generate invoice from first albaran (copies all its lines)
+        $success = $generator->generate(
             $prototype,           // First albaran as prototype
             'FacturaProveedor',   // Class name as STRING
-            $newLines,            // All combined lines
+            [],                   // EMPTY = copy all lines from prototype
             [],                   // No quantity overrides
             $properties           // Additional properties (date)
         );
+
+        if (!$success) {
+            Tools::log()->error('failed-to-generate-invoice-from-albaran',
+                ['%id%' => $prototype->codigo]);
+            return false;
+        }
+
+        // If grouping multiple albaranes, add lines from the rest
+        if (count($albaranes) > 1) {
+            $facturas = $generator->getLastDocs();
+            if (empty($facturas)) {
+                Tools::log()->error('no-invoice-generated');
+                return false;
+            }
+
+            $factura = $facturas[0];
+
+            // Add lines from remaining albaranes (skip first, already added)
+            for ($i = 1; $i < count($albaranes); $i++) {
+                $alb = $albaranes[$i];
+                foreach ($alb->getLines() as $line) {
+                    $newLine = $factura->getNewLine();
+                    $newLine->loadFromData($line->toArray());
+                    $newLine->idalbaran = null; // Reset albaran reference
+                    if (!$newLine->save()) {
+                        Tools::log()->error('failed-to-add-line-to-invoice');
+                        return false;
+                    }
+                }
+            }
+
+            // Recalculate totals and save
+            if (!$factura->save()) {
+                Tools::log()->error('failed-to-save-invoice');
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
