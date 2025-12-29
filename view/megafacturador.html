@@ -179,45 +179,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
             </div>
         </div>
     </form>
-    <div class="row">
-        <div class="col-sm-12">
-            <div class="page-header">
-                <h2>
-                    <i class="fa fa-info-circle" aria-hidden="true"></i> Otras opciones
-                </h2>
-            </div>
-        </div>
-    </div>
-    <div class="row">
-        <div class="col-sm-3">
-            <a href="{$fsc->url()}&genasientos=TRUE" class="btn btn-default btn-block">
-                <i class="fa fa-balance-scale" aria-hidden="true"></i>&nbsp; Generar asientos
-                {if="$fsc->numasientos>0"}
-                <span class="badge">{$fsc->numasientos}</span>
-                {/if}
-            </a>
-        </div>
-        <div class="col-sm-6">
-            <p class="help-block">
-                Genera los asientos de las facturas que no tengan. Si tienes activada
-                la contabilidad integrada, los asientos contables de las facturas se
-                generan automáticamente, pero si por algún motivo tienes facturas sin
-                asientos o quieres generarlos ahora, simplemente pulsa el botón.
-            </p>
-        </div>
-        <div class="col-sm-3">
-            {if="!$fsc->empresa->contintegrada"}
-            <a href="{$fsc->url()}&activar_contintegrada=TRUE" class="btn btn-block btn-warning">
-                <i class="fa fa-toggle-on" aria-hidden="true"></i>&nbsp;
-                Activar contabilidad integrada
-            </a>
-            <p class="help-block">
-                <i class="fa fa-info-circle" aria-hidden="true"></i>
-                Activa la contabilidad integrada para que los asientos se generen automáticamente.
-            </p>
-            {/if}
-        </div>
-    </div>
 </div>
 
 {include="footer"}

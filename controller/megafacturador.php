@@ -103,6 +103,15 @@ class megafacturador extends fbase_controller
         parent::__construct(__CLASS__, 'MegaFacturador', 'ventas', FALSE, TRUE, TRUE);
     }
 
+    /**
+     * Método toolBox para compatibilidad con versiones antiguas de FacturaScripts
+     * @return $this
+     */
+    public function toolBox()
+    {
+        return $this;
+    }
+
     protected function private_core()
     {
         $this->asiento_factura = new asiento_factura();
@@ -119,19 +128,18 @@ class megafacturador extends fbase_controller
         $this->url_recarga = FALSE;
         $this->load_config();
 
+        /// Inicializar extensions para evitar errores
+        if (!isset($this->extensions)) {
+            $this->extensions = array();
+        }
+
         if (filter_input(INPUT_POST, 'megafac_fecha')) {
             $this->modificar_config();
         } else if (filter_input(INPUT_GET, 'procesar') == 'TRUE') {
             $this->generar_facturas();
-        } else if (isset($_GET['genasientos'])) {
-            $this->generar_asientos();
-        } else if (isset($_GET['activar_contintegrada'])) {
-            $this->activar_contabilidad_integrada();
         } else {
             $this->share_extensions();
         }
-
-        $this->numasientos = $this->num_asientos_a_generar();
     }
 
     private function load_config()
@@ -186,7 +194,9 @@ class megafacturador extends fbase_controller
             $sql .= " AND codserie = " . $this->serie->var2str($this->opciones['megafac_codserie']);
         }
         if ($this->opciones['megafac_hasta']) {
-            $sql .= " AND fecha <= " . $this->serie->var2str($this->opciones['megafac_hasta']);
+            /// Convertir la fecha del formato d-m-Y al formato Y-m-d para la base de datos
+            $fecha_db = date('Y-m-d', strtotime($this->opciones['megafac_hasta']));
+            $sql .= " AND fecha <= " . $this->serie->var2str($fecha_db);
         }
 
         return $sql;
