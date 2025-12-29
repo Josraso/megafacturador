@@ -358,22 +358,46 @@ class Megafacturador extends Controller
             return false;
         }
 
-        // Create new invoice
-        $nuevaFactura = new FacturaCliente();
+        // Use first albaran as prototype
+        $prototype = $albaranes[0];
 
-        // Set custom date if specified (otherwise generator uses albaran dates automatically)
-        if ($fecha) {
-            $nuevaFactura->setDate($fecha, $nuevaFactura->hora);
-        }
-
-        // Prepare array of docs for generator (CRITICAL: this marks albaranes as invoiced)
-        $docs = [];
+        // Collect all lines from all albaranes
+        $newLines = [];
+        $quantities = [];
         foreach ($albaranes as $alb) {
-            $docs[] = $alb;
+            foreach ($alb->getLines() as $line) {
+                $newLines[] = $line;
+                $quantities[$line->primaryColumnValue()] = $line->cantidad;
+            }
         }
 
-        // Generate invoice from all albaranes (generator handles everything including marking as invoiced)
-        return $generator->generate($nuevaFactura, $docs);
+        // Prepare properties with date
+        $properties = [];
+        if ($fecha) {
+            // Use custom date (today)
+            $properties['fecha'] = $fecha;
+        } else {
+            // Use albaran's date (use first albaran's date for grouped invoices)
+            $properties['fecha'] = $prototype->fecha;
+        }
+
+        // Generate invoice from all lines
+        $success = $generator->generate($prototype, 'FacturaCliente', $newLines, $quantities, $properties);
+
+        if (!$success) {
+            Tools::log()->error('failed-to-generate-invoice');
+            return false;
+        }
+
+        // CRITICAL: Mark all albaranes as invoiced (generator doesn't do this automatically)
+        foreach ($albaranes as $alb) {
+            $alb->editable = false;
+            if (!$alb->save()) {
+                Tools::log()->warning('failed-to-mark-albaran-as-invoiced', ['%code%' => $alb->codigo]);
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -391,22 +415,46 @@ class Megafacturador extends Controller
             return false;
         }
 
-        // Create new invoice
-        $nuevaFactura = new FacturaProveedor();
+        // Use first albaran as prototype
+        $prototype = $albaranes[0];
 
-        // Set custom date if specified (otherwise generator uses albaran dates automatically)
-        if ($fecha) {
-            $nuevaFactura->setDate($fecha, $nuevaFactura->hora);
-        }
-
-        // Prepare array of docs for generator (CRITICAL: this marks albaranes as invoiced)
-        $docs = [];
+        // Collect all lines from all albaranes
+        $newLines = [];
+        $quantities = [];
         foreach ($albaranes as $alb) {
-            $docs[] = $alb;
+            foreach ($alb->getLines() as $line) {
+                $newLines[] = $line;
+                $quantities[$line->primaryColumnValue()] = $line->cantidad;
+            }
         }
 
-        // Generate invoice from all albaranes (generator handles everything including marking as invoiced)
-        return $generator->generate($nuevaFactura, $docs);
+        // Prepare properties with date
+        $properties = [];
+        if ($fecha) {
+            // Use custom date (today)
+            $properties['fecha'] = $fecha;
+        } else {
+            // Use albaran's date (use first albaran's date for grouped invoices)
+            $properties['fecha'] = $prototype->fecha;
+        }
+
+        // Generate invoice from all lines
+        $success = $generator->generate($prototype, 'FacturaProveedor', $newLines, $quantities, $properties);
+
+        if (!$success) {
+            Tools::log()->error('failed-to-generate-invoice');
+            return false;
+        }
+
+        // CRITICAL: Mark all albaranes as invoiced (generator doesn't do this automatically)
+        foreach ($albaranes as $alb) {
+            $alb->editable = false;
+            if (!$alb->save()) {
+                Tools::log()->warning('failed-to-mark-albaran-as-invoiced', ['%code%' => $alb->codigo]);
+            }
+        }
+
+        return true;
     }
 
     /**
