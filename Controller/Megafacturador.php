@@ -257,6 +257,27 @@ class Megafacturador extends Controller
     }
 
     /**
+     * Get the date of the last invoice to maintain chronological order
+     *
+     * @param string $modelName
+     * @return string|null
+     */
+    private function getUltimaFechaFactura(string $modelName): ?string
+    {
+        $className = 'FacturaScripts\\Dinamic\\Model\\' . $modelName;
+        $model = new $className();
+
+        // Get last invoice ordered by date DESC
+        $facturas = $model->all([], ['fecha' => 'DESC'], 0, 1);
+
+        if (!empty($facturas)) {
+            return $facturas[0]->fecha;
+        }
+
+        return null;
+    }
+
+    /**
      * Generate invoices from delivery notes
      */
     private function generarFacturas(): void
@@ -270,6 +291,10 @@ class Megafacturador extends Controller
             $fecha = date('Y-m-d');
         }
         // If 'albaran', $fecha stays null and will use delivery note's date
+
+        // Get last invoice dates to avoid chronological issues
+        $ultimaFechaCliente = $this->getUltimaFechaFactura('FacturaCliente');
+        $ultimaFechaProveedor = $this->getUltimaFechaFactura('FacturaProveedor');
 
         if ($this->opciones['megafac_ventas']) {
             $total1 = 0;
@@ -289,7 +314,7 @@ class Megafacturador extends Controller
 
                 if (empty($albaranes)) {
                     // Already invoiced when grouping, skip
-                } elseif ($this->facturarAlbaranCliente($generator, $albaranes, $fecha)) {
+                } elseif ($this->facturarAlbaranCliente($generator, $albaranes, $fecha, $ultimaFechaCliente)) {
                     $total1++;
                     $recargar = true;
                 } else {
@@ -318,7 +343,7 @@ class Megafacturador extends Controller
 
                 if (empty($albaranes)) {
                     // Already invoiced when grouping, skip
-                } elseif ($this->facturarAlbaranProveedor($generator, $albaranes, $fecha)) {
+                } elseif ($this->facturarAlbaranProveedor($generator, $albaranes, $fecha, $ultimaFechaProveedor)) {
                     $total2++;
                     $recargar = true;
                 } else {
@@ -350,16 +375,17 @@ class Megafacturador extends Controller
      * @param BusinessDocumentGenerator $generator
      * @param array $albaranes
      * @param string|null $fecha
+     * @param string|null $ultimaFechaFactura
      *
      * @return bool
      */
-    private function facturarAlbaranCliente($generator, array $albaranes, ?string $fecha): bool
+    private function facturarAlbaranCliente($generator, array $albaranes, ?string $fecha, ?string $ultimaFechaFactura): bool
     {
         if (empty($albaranes)) {
             return false;
         }
 
-        // Use first albaran as prototype
+        // Use first albaran as prototype (oldest in the batch)
         $prototype = $albaranes[0];
 
         // Collect all lines from all albaranes and track quantities
@@ -391,8 +417,31 @@ class Megafacturador extends Controller
             // Use custom date (today)
             $properties['fecha'] = $fecha;
         } else {
-            // Use albaran's date
-            $properties['fecha'] = $prototype->fecha;
+            // CRITICAL: Check if any albaran in the batch is older than last invoice
+            // If so, use the first valid date (oldest from current batch)
+            $fechaFactura = $prototype->fecha;
+
+            // Find oldest albaran that would cause chronological issues
+            $tieneAtrasado = false;
+            foreach ($albaranes as $alb) {
+                if ($ultimaFechaFactura && $alb->fecha < $ultimaFechaFactura) {
+                    $tieneAtrasado = true;
+                    break;
+                }
+            }
+
+            // If there's a delayed albaran, use first available valid date
+            if ($tieneAtrasado) {
+                // Find first date >= last invoice date
+                foreach ($albaranes as $alb) {
+                    if (!$ultimaFechaFactura || $alb->fecha >= $ultimaFechaFactura) {
+                        $fechaFactura = $alb->fecha;
+                        break;
+                    }
+                }
+            }
+
+            $properties['fecha'] = $fechaFactura;
         }
 
         // Generate invoice from all lines
@@ -459,16 +508,17 @@ class Megafacturador extends Controller
      * @param BusinessDocumentGenerator $generator
      * @param array $albaranes
      * @param string|null $fecha
+     * @param string|null $ultimaFechaFactura
      *
      * @return bool
      */
-    private function facturarAlbaranProveedor($generator, array $albaranes, ?string $fecha): bool
+    private function facturarAlbaranProveedor($generator, array $albaranes, ?string $fecha, ?string $ultimaFechaFactura): bool
     {
         if (empty($albaranes)) {
             return false;
         }
 
-        // Use first albaran as prototype
+        // Use first albaran as prototype (oldest in the batch)
         $prototype = $albaranes[0];
 
         // Collect all lines from all albaranes and track quantities
@@ -500,8 +550,31 @@ class Megafacturador extends Controller
             // Use custom date (today)
             $properties['fecha'] = $fecha;
         } else {
-            // Use albaran's date
-            $properties['fecha'] = $prototype->fecha;
+            // CRITICAL: Check if any albaran in the batch is older than last invoice
+            // If so, use the first valid date (oldest from current batch)
+            $fechaFactura = $prototype->fecha;
+
+            // Find oldest albaran that would cause chronological issues
+            $tieneAtrasado = false;
+            foreach ($albaranes as $alb) {
+                if ($ultimaFechaFactura && $alb->fecha < $ultimaFechaFactura) {
+                    $tieneAtrasado = true;
+                    break;
+                }
+            }
+
+            // If there's a delayed albaran, use first available valid date
+            if ($tieneAtrasado) {
+                // Find first date >= last invoice date
+                foreach ($albaranes as $alb) {
+                    if (!$ultimaFechaFactura || $alb->fecha >= $ultimaFechaFactura) {
+                        $fechaFactura = $alb->fecha;
+                        break;
+                    }
+                }
+            }
+
+            $properties['fecha'] = $fechaFactura;
         }
 
         // Generate invoice from all lines
