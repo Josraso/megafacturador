@@ -192,7 +192,7 @@ class Megafacturador extends Controller
     private function getSqlConditions(): array
     {
         $where = [
-            new DataBaseWhere('ptefactura', true),
+            new DataBaseWhere('editable', true),
             new DataBaseWhere('total', 0, '!=')
         ];
 
