@@ -361,13 +361,17 @@ class Megafacturador extends Controller
         // Use first albaran as prototype
         $prototype = $albaranes[0];
 
-        // Prepare properties with custom date if needed
+        // Prepare properties with date (explicit to ensure correct date is used)
         $properties = [];
         if ($fecha) {
+            // Use custom date (today)
             $properties['fecha'] = $fecha;
+        } else {
+            // CRITICAL: Use albaran's date explicitly (BusinessDocumentGenerator uses TODAY by default if not specified)
+            $properties['fecha'] = $prototype->fecha;
         }
 
-        // Generate invoice from first albaran (copies all its lines)
+        // Generate invoice from first albaran (copies all its lines WITH idalbaran reference)
         $success = $generator->generate(
             $prototype,           // First albaran as prototype
             'FacturaCliente',     // Class name as STRING
@@ -382,22 +386,17 @@ class Megafacturador extends Controller
             return false;
         }
 
-        // CRITICAL: Mark first albaran as invoiced (not editable anymore)
-        $prototype->editable = false;
-        if (!$prototype->save()) {
-            Tools::log()->error('failed-to-update-albaran-status');
+        // Get the generated invoice
+        $facturas = $generator->getLastDocs();
+        if (empty($facturas)) {
+            Tools::log()->error('no-invoice-generated');
+            return false;
         }
+
+        $factura = $facturas[0];
 
         // If grouping multiple albaranes, add lines from the rest
         if (count($albaranes) > 1) {
-            $facturas = $generator->getLastDocs();
-            if (empty($facturas)) {
-                Tools::log()->error('no-invoice-generated');
-                return false;
-            }
-
-            $factura = $facturas[0];
-
             // Add lines from remaining albaranes (skip first, already added)
             for ($i = 1; $i < count($albaranes); $i++) {
                 $alb = $albaranes[$i];
@@ -405,17 +404,12 @@ class Megafacturador extends Controller
                 foreach ($alb->getLines() as $line) {
                     $newLine = $factura->getNewLine();
                     $newLine->loadFromData($line->toArray());
-                    $newLine->idalbaran = null; // Reset albaran reference
+                    // CRITICAL: Keep the albaran reference to properly link documents
+                    $newLine->idalbaran = $alb->primaryColumnValue();
                     if (!$newLine->save()) {
                         Tools::log()->error('failed-to-add-line-to-invoice');
                         return false;
                     }
-                }
-
-                // CRITICAL: Mark this albaran as invoiced too
-                $alb->editable = false;
-                if (!$alb->save()) {
-                    Tools::log()->error('failed-to-update-albaran-status');
                 }
             }
 
@@ -447,13 +441,17 @@ class Megafacturador extends Controller
         // Use first albaran as prototype
         $prototype = $albaranes[0];
 
-        // Prepare properties with custom date if needed
+        // Prepare properties with date (explicit to ensure correct date is used)
         $properties = [];
         if ($fecha) {
+            // Use custom date (today)
             $properties['fecha'] = $fecha;
+        } else {
+            // CRITICAL: Use albaran's date explicitly (BusinessDocumentGenerator uses TODAY by default if not specified)
+            $properties['fecha'] = $prototype->fecha;
         }
 
-        // Generate invoice from first albaran (copies all its lines)
+        // Generate invoice from first albaran (copies all its lines WITH idalbaran reference)
         $success = $generator->generate(
             $prototype,           // First albaran as prototype
             'FacturaProveedor',   // Class name as STRING
@@ -468,22 +466,17 @@ class Megafacturador extends Controller
             return false;
         }
 
-        // CRITICAL: Mark first albaran as invoiced (not editable anymore)
-        $prototype->editable = false;
-        if (!$prototype->save()) {
-            Tools::log()->error('failed-to-update-albaran-status');
+        // Get the generated invoice
+        $facturas = $generator->getLastDocs();
+        if (empty($facturas)) {
+            Tools::log()->error('no-invoice-generated');
+            return false;
         }
+
+        $factura = $facturas[0];
 
         // If grouping multiple albaranes, add lines from the rest
         if (count($albaranes) > 1) {
-            $facturas = $generator->getLastDocs();
-            if (empty($facturas)) {
-                Tools::log()->error('no-invoice-generated');
-                return false;
-            }
-
-            $factura = $facturas[0];
-
             // Add lines from remaining albaranes (skip first, already added)
             for ($i = 1; $i < count($albaranes); $i++) {
                 $alb = $albaranes[$i];
@@ -491,17 +484,12 @@ class Megafacturador extends Controller
                 foreach ($alb->getLines() as $line) {
                     $newLine = $factura->getNewLine();
                     $newLine->loadFromData($line->toArray());
-                    $newLine->idalbaran = null; // Reset albaran reference
+                    // CRITICAL: Keep the albaran reference to properly link documents
+                    $newLine->idalbaran = $alb->primaryColumnValue();
                     if (!$newLine->save()) {
                         Tools::log()->error('failed-to-add-line-to-invoice');
                         return false;
                     }
-                }
-
-                // CRITICAL: Mark this albaran as invoiced too
-                $alb->editable = false;
-                if (!$alb->save()) {
-                    Tools::log()->error('failed-to-update-albaran-status');
                 }
             }
 
