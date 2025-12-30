@@ -223,7 +223,6 @@ class Megafacturador extends Controller
         if (!empty($this->opciones['megafac_hasta'])) {
             // Convert Y-m-d format to dd-mm-yyyy format for database comparison
             $fechaHasta = date('d-m-Y', strtotime($this->opciones['megafac_hasta']));
-            Tools::log()->info('DEBUG FILTRO: megafac_hasta (Y-m-d)=' . $this->opciones['megafac_hasta'] . ' converted (dd-mm-yyyy)=' . $fechaHasta);
             $where[] = new DataBaseWhere('fecha', $fechaHasta, '<=');
         }
 
@@ -257,11 +256,7 @@ class Megafacturador extends Controller
 
         $className = 'FacturaScripts\\Dinamic\\Model\\' . $modelName;
         $model = new $className();
-        $result = $model->all($where, ['fecha' => 'ASC', 'hora' => 'ASC'], 0, 20);
-
-        Tools::log()->info('DEBUG ALBARANES: model=' . $modelName . ' found=' . count($result) . ' cliente=' . ($codcliente ?: 'ALL') . ' serie=' . ($codserie ?: 'ALL'));
-
-        return $result;
+        return $model->all($where, ['fecha' => 'ASC', 'hora' => 'ASC'], 0, 20);
     }
 
     /**
@@ -305,12 +300,9 @@ class Megafacturador extends Controller
         $facturas = $model->all($where, ['fecha' => 'DESC'], 0, 1);
 
         if (!empty($facturas)) {
-            $fecha = $facturas[0]->fecha;
-            Tools::log()->info('DEBUG getUltimaFechaFactura: model=' . $modelName . ' serie=' . ($codserie ?? 'ALL') . ' year=' . ($year ?? 'ALL') . ' fecha=' . $fecha);
-            return $fecha;
+            return $facturas[0]->fecha;
         }
 
-        Tools::log()->info('DEBUG getUltimaFechaFactura: model=' . $modelName . ' serie=' . ($codserie ?? 'ALL') . ' year=' . ($year ?? 'ALL') . ' NO FOUND');
         return null;
     }
 
@@ -506,8 +498,6 @@ class Megafacturador extends Controller
             // Decide which date to use for the invoice
             $fechaFactura = $prototype->fecha;
 
-            Tools::log()->info('DEBUG FECHA: albaran=' . $prototype->codigo . ' serie=' . $prototype->codserie . ' fecha_albaran=' . $prototype->fecha . ' ultima_serie_year=' . ($ultimaFechaSerieYear ?? 'NULL'));
-
             // If there's a last invoice from same serie and year, compare with it
             if ($ultimaFechaSerieYear) {
                 $timestampAlbaran = strtotime($prototype->fecha);
@@ -515,12 +505,9 @@ class Megafacturador extends Controller
 
                 if ($timestampAlbaran < $timestampUltima) {
                     $fechaFactura = $ultimaFechaSerieYear;
-                    Tools::log()->info('DEBUG FECHA: usando ultima de serie+año');
                 }
             }
             // If NO last invoice from same serie+year, use albaran's own date (NEVER mix years)
-
-            Tools::log()->info('DEBUG FECHA: fecha_final_a_usar=' . $fechaFactura);
 
             $properties['fecha'] = $fechaFactura;
         }
