@@ -801,6 +801,9 @@ class Megafacturador extends Controller
         $fileContent = file_get_contents($tmpFile);
         $facturasIds = array_filter(explode("\n", trim($fileContent)));
 
+        Tools::log()->info('DEBUG: File content: "' . $fileContent . '"');
+        Tools::log()->info('DEBUG: Found ' . count($facturasIds) . ' invoice IDs: ' . implode(', ', $facturasIds));
+
         if (empty($facturasIds)) {
             Tools::log()->warning('no-invoices-to-send');
             @unlink($tmpFile);
@@ -812,15 +815,18 @@ class Megafacturador extends Controller
         foreach ($facturasIds as $id) {
             $factura = new FacturaCliente();
             if ($factura->loadFromCode($id)) {
+                Tools::log()->info('DEBUG: Loaded invoice ID=' . $id . ' codigo=' . $factura->codigo . ' cliente=' . $factura->nombrecliente . ' email=' . $factura->email);
                 $facturas[] = $factura;
             }
         }
 
+        Tools::log()->info('DEBUG: Total facturas loaded in array: ' . count($facturas));
+
         $enviados = 0;
         $errores = 0;
 
-        foreach ($facturas as $factura) {
-            Tools::log()->info('DEBUG SEND: Processing invoice ' . $factura->codigo . ' | email field: "' . $factura->email . '"');
+        foreach ($facturas as $index => $factura) {
+            Tools::log()->info('DEBUG SEND [' . $index . ']: Processing invoice ID=' . $factura->primaryColumnValue() . ' codigo=' . $factura->codigo . ' cliente=' . $factura->nombrecliente . ' email="' . $factura->email . '"');
 
             // Get customer to get email if not in invoice
             if (empty($factura->email)) {
@@ -845,6 +851,8 @@ class Megafacturador extends Controller
 
             // Generate PDF using ExportManager (like native FacturaScripts)
             try {
+                Tools::log()->info('DEBUG PDF: About to generate PDF for invoice codigo=' . $factura->codigo . ' cliente=' . $factura->nombrecliente);
+
                 $export = new ExportManager();
                 $export->newDoc('PDF');
                 $export->addBusinessDocPage($factura);
@@ -861,6 +869,8 @@ class Megafacturador extends Controller
                            '<p>Atentamente,<br>' . $empresaNombre . '</p>';
 
                 // Create and send email with PDF attachment
+                Tools::log()->info('DEBUG EMAIL: Sending to email="' . $factura->email . '" name="' . $factura->nombrecliente . '" subject="' . $empresaNombre . ' - Factura ' . $factura->codigo . '" attachment="' . $pdfFileName . '"');
+
                 $mail = NewMail::create()
                     ->to($factura->email, $factura->nombrecliente)
                     ->subject($empresaNombre . ' - Factura ' . $factura->codigo)
