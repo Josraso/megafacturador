@@ -343,7 +343,6 @@ class Megafacturador extends Controller
 
         if ($this->opciones['megafac_ventas']) {
             $total1 = 0;
-            $generator = new BusinessDocumentGenerator();
 
             $pendientes = $this->albaranesPendientes('AlbaranCliente');
             Tools::log()->info('DEBUG: Found ' . count($pendientes) . ' pending customer delivery notes');
@@ -364,13 +363,17 @@ class Megafacturador extends Controller
                 if (empty($albaranes)) {
                     // Already invoiced when grouping, skip
                     Tools::log()->info('DEBUG: Skipping albaran (empty/already invoiced)');
-                } elseif ($this->facturarAlbaranCliente($generator, $albaranes, $fecha, $ultimaFechaCliente, $tmpFile)) {
-                    $total1++;
-                    $recargar = true;
-                    Tools::log()->info('DEBUG: Successfully invoiced albaran group. Total: ' . $total1);
                 } else {
-                    Tools::log()->error('DEBUG: Failed to invoice albaran - BREAKING');
-                    break;
+                    // Create NEW generator for each invoice to avoid reusing same instance
+                    $generator = new BusinessDocumentGenerator();
+                    if ($this->facturarAlbaranCliente($generator, $albaranes, $fecha, $ultimaFechaCliente, $tmpFile)) {
+                        $total1++;
+                        $recargar = true;
+                        Tools::log()->info('DEBUG: Successfully invoiced albaran group. Total: ' . $total1);
+                    } else {
+                        Tools::log()->error('DEBUG: Failed to invoice albaran - BREAKING');
+                        break;
+                    }
                 }
             }
 
@@ -379,7 +382,6 @@ class Megafacturador extends Controller
 
         if ($this->opciones['megafac_compras']) {
             $total2 = 0;
-            $generator = new BusinessDocumentGenerator();
 
             foreach ($this->albaranesPendientes('AlbaranProveedor') as $alb) {
                 // Group by supplier or not?
@@ -395,11 +397,15 @@ class Megafacturador extends Controller
 
                 if (empty($albaranes)) {
                     // Already invoiced when grouping, skip
-                } elseif ($this->facturarAlbaranProveedor($generator, $albaranes, $fecha, $ultimaFechaProveedor, $tmpFile)) {
-                    $total2++;
-                    $recargar = true;
                 } else {
-                    break;
+                    // Create NEW generator for each invoice to avoid reusing same instance
+                    $generator = new BusinessDocumentGenerator();
+                    if ($this->facturarAlbaranProveedor($generator, $albaranes, $fecha, $ultimaFechaProveedor, $tmpFile)) {
+                        $total2++;
+                        $recargar = true;
+                    } else {
+                        break;
+                    }
                 }
             }
 
