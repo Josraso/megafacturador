@@ -21,11 +21,9 @@ namespace FacturaScripts\Plugins\Megafacturador\Controller;
 
 use FacturaScripts\Core\Base\Controller;
 use FacturaScripts\Core\Base\DataBase\DataBaseWhere;
-use FacturaScripts\Core\Base\ExportManager;
 use FacturaScripts\Core\Tools;
 use FacturaScripts\Dinamic\Lib\Accounting\AccountingAccounts;
 use FacturaScripts\Dinamic\Lib\BusinessDocumentGenerator;
-use FacturaScripts\Dinamic\Lib\Email\EmailTools;
 use FacturaScripts\Dinamic\Model\AlbaranCliente;
 use FacturaScripts\Dinamic\Model\AlbaranProveedor;
 use FacturaScripts\Dinamic\Model\Cliente;
@@ -402,11 +400,13 @@ class Megafacturador extends Controller
         } else {
             Tools::log()->notice('Finished.');
             if ($this->opciones['megafac_email']) {
-                $this->enviarFacturas($tmpFile);
-            }
-            // Clean up temp file
-            if (file_exists($tmpFile)) {
-                @unlink($tmpFile);
+                // Redirect to email sending page
+                $this->redirect($this->url() . '?page=MegafacturadorEmail&runid=' . $runId);
+            } else {
+                // Clean up temp file if not sending emails
+                if (file_exists($tmpFile)) {
+                    @unlink($tmpFile);
+                }
             }
         }
     }
@@ -692,115 +692,6 @@ class Megafacturador extends Controller
         }
 
         return true;
-    }
-
-    /**
-     * Send emails for all generated invoices in this megafacturador session
-     *
-     * @param string $tmpFile
-     */
-    private function enviarFacturas(string $tmpFile): void
-    {
-        if ($this->permissions->onlyOwnerData) {
-            Tools::log()->error('send-invoices-access-denied');
-            return;
-        }
-
-        // Read invoice IDs from temp file
-        Tools::log()->info('DEBUG: Reading invoice IDs from temp file: ' . $tmpFile);
-
-        if (!file_exists($tmpFile)) {
-            Tools::log()->warning('no-invoices-to-send - temp file not found');
-            return;
-        }
-
-        $fileContent = file_get_contents($tmpFile);
-        $facturasIds = array_filter(explode("\n", trim($fileContent)));
-
-        Tools::log()->info('DEBUG: File content: ' . $fileContent);
-        Tools::log()->info('DEBUG: Found ' . count($facturasIds) . ' invoice IDs');
-
-        if (empty($facturasIds)) {
-            Tools::log()->warning('no-invoices-to-send');
-            return;
-        }
-
-        Tools::log()->notice('Found ' . count($facturasIds) . ' invoices to send from this session.');
-
-        // Load invoices by their IDs
-        $facturaModel = new FacturaCliente();
-        $facturas = [];
-        foreach ($facturasIds as $id) {
-            $factura = $facturaModel->get($id);
-            if ($factura) {
-                $facturas[] = $factura;
-                Tools::log()->info('DEBUG: Loaded invoice: ' . $factura->codigo);
-            } else {
-                Tools::log()->warning('DEBUG: Could not load invoice with ID: ' . $id);
-            }
-        }
-
-        $enviados = 0;
-        $errores = 0;
-
-        foreach ($facturas as $factura) {
-            // Get customer email
-            if (empty($factura->email)) {
-                Tools::log()->warning('invoice-without-email', ['%invoice%' => $factura->codigo]);
-                $errores++;
-                continue;
-            }
-
-            // Send email with invoice PDF attached
-            $emailTools = new EmailTools();
-            $mail = $emailTools->newMail();
-            $mail->addAddress($factura->email, $factura->nombrecliente);
-
-            // Subject
-            $empresa = new Empresa();
-            if ($empresa->loadFromCode($factura->idempresa)) {
-                $mail->Subject = $empresa->nombrecorto . ' - Factura ' . $factura->codigo;
-            } else {
-                $mail->Subject = 'Factura ' . $factura->codigo;
-            }
-
-            // Body
-            $mail->msgHTML(
-                '<p>Estimado/a <strong>' . $factura->nombrecliente . '</strong>,</p>' .
-                '<p>Adjuntamos la factura <strong>' . $factura->codigo . '</strong>.</p>' .
-                '<p>Atentamente,<br>' . ($empresa->nombrecorto ?? 'Su empresa') . '</p>'
-            );
-
-            // Attach PDF using export manager
-            try {
-                $exportManager = new ExportManager();
-                $exportManager->newDoc('PDF', $factura->modelClassName());
-                $exportManager->addModelPage($factura->modelClassName(), $factura->codigo, [], $factura->codigo);
-
-                $pdfPath = $exportManager->getDoc();
-                if ($pdfPath && file_exists($pdfPath)) {
-                    $mail->addAttachment($pdfPath, $factura->codigo . '.pdf');
-                }
-            } catch (\Exception $e) {
-                Tools::log()->error('pdf-generation-error', ['%error%' => $e->getMessage()]);
-            }
-
-            // Send
-            if ($mail->send()) {
-                $enviados++;
-                Tools::log()->info('invoice-email-sent', ['%invoice%' => $factura->codigo, '%email%' => $factura->email]);
-            } else {
-                $errores++;
-                Tools::log()->error('invoice-email-error', ['%invoice%' => $factura->codigo, '%error%' => $mail->ErrorInfo]);
-            }
-
-            // Clean up PDF file
-            if (isset($pdfPath) && file_exists($pdfPath)) {
-                @unlink($pdfPath);
-            }
-        }
-
-        Tools::log()->notice($enviados . ' emails sent, ' . $errores . ' errors.');
     }
 
     /**
