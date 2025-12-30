@@ -307,27 +307,17 @@ class Megafacturador extends Controller
             $runId = 'mf_' . time() . '_' . rand(1000, 9999);
             $tmpFile = sys_get_temp_dir() . '/megafac_' . $runId . '.txt';
             file_put_contents($tmpFile, '');
-            Tools::log()->info('DEBUG: New run - created temp file: ' . $tmpFile);
 
             // Clean up old temp files (older than 1 hour)
             $tmpDir = sys_get_temp_dir();
             foreach (glob($tmpDir . '/megafac_mf_*.txt') as $oldFile) {
                 if (filemtime($oldFile) < time() - 3600) {
                     @unlink($oldFile);
-                    Tools::log()->info('DEBUG: Cleaned up old temp file: ' . $oldFile);
                 }
             }
         } else {
             $tmpFile = sys_get_temp_dir() . '/megafac_' . $runId . '.txt';
-            Tools::log()->info('DEBUG: Continuing run - using temp file: ' . $tmpFile);
         }
-
-        Tools::log()->info('DEBUG: Config - ventas: ' . $this->opciones['megafac_ventas'] .
-                          ', compras: ' . $this->opciones['megafac_compras'] .
-                          ', email: ' . $this->opciones['megafac_email'] .
-                          ', agrupar: ' . $this->opciones['megafac_agrupar'] .
-                          ', fecha: ' . $this->opciones['megafac_fecha'] .
-                          ', hasta: ' . $this->opciones['megafac_hasta']);
 
         // Determine invoice date based on user preference
         $fecha = null;
@@ -345,10 +335,8 @@ class Megafacturador extends Controller
             $total1 = 0;
 
             $pendientes = $this->albaranesPendientes('AlbaranCliente');
-            Tools::log()->info('DEBUG: Found ' . count($pendientes) . ' pending customer delivery notes');
 
             foreach ($pendientes as $alb) {
-                Tools::log()->info('DEBUG: Processing albaran: ' . $alb->codigo . ' for customer: ' . $alb->codcliente);
                 // Group by customer or not?
                 $albaranes = [];
                 if ($this->opciones['megafac_agrupar']) {
@@ -362,16 +350,13 @@ class Megafacturador extends Controller
 
                 if (empty($albaranes)) {
                     // Already invoiced when grouping, skip
-                    Tools::log()->info('DEBUG: Skipping albaran (empty/already invoiced)');
                 } else {
                     // Create NEW generator for each invoice to avoid reusing same instance
                     $generator = new BusinessDocumentGenerator();
                     if ($this->facturarAlbaranCliente($generator, $albaranes, $fecha, $ultimaFechaCliente, $tmpFile)) {
                         $total1++;
                         $recargar = true;
-                        Tools::log()->info('DEBUG: Successfully invoiced albaran group. Total: ' . $total1);
                     } else {
-                        Tools::log()->error('DEBUG: Failed to invoice albaran - BREAKING');
                         break;
                     }
                 }
@@ -507,8 +492,18 @@ class Megafacturador extends Controller
                 }
 
                 // If no valid date found in pending albaranes, use configured limit date
-                if (!$fechaEncontrada && !empty($this->opciones['megafac_hasta'])) {
-                    $fechaFactura = $this->opciones['megafac_hasta'];
+                if (!$fechaEncontrada) {
+                    if (!empty($this->opciones['megafac_hasta']) && $this->opciones['megafac_hasta'] >= $ultimaFechaFactura) {
+                        $fechaFactura = $this->opciones['megafac_hasta'];
+                    } else {
+                        // Use last invoice date as minimum to avoid chronological errors
+                        $fechaFactura = $ultimaFechaFactura;
+                        Tools::log()->warning('delayed-albaran-using-last-invoice-date', [
+                            '%albaran%' => $prototype->codigo,
+                            '%albaran-date%' => $prototype->fecha,
+                            '%invoice-date%' => $fechaFactura
+                        ]);
+                    }
                 }
             }
 
@@ -529,7 +524,6 @@ class Megafacturador extends Controller
             $factura = $facturas[0];
             $facturaId = $factura->primaryColumnValue();
             file_put_contents($tmpFile, $facturaId . "\n", FILE_APPEND);
-            Tools::log()->info('DEBUG: Wrote invoice ID to file: ' . $facturaId . ' | File: ' . $tmpFile);
         }
 
         // CRITICAL: Mark lines as served and check if albaran is fully invoiced
@@ -649,8 +643,18 @@ class Megafacturador extends Controller
                 }
 
                 // If no valid date found in pending albaranes, use configured limit date
-                if (!$fechaEncontrada && !empty($this->opciones['megafac_hasta'])) {
-                    $fechaFactura = $this->opciones['megafac_hasta'];
+                if (!$fechaEncontrada) {
+                    if (!empty($this->opciones['megafac_hasta']) && $this->opciones['megafac_hasta'] >= $ultimaFechaFactura) {
+                        $fechaFactura = $this->opciones['megafac_hasta'];
+                    } else {
+                        // Use last invoice date as minimum to avoid chronological errors
+                        $fechaFactura = $ultimaFechaFactura;
+                        Tools::log()->warning('delayed-albaran-using-last-invoice-date', [
+                            '%albaran%' => $prototype->codigo,
+                            '%albaran-date%' => $prototype->fecha,
+                            '%invoice-date%' => $fechaFactura
+                        ]);
+                    }
                 }
             }
 
@@ -807,9 +811,6 @@ class Megafacturador extends Controller
         $fileContent = file_get_contents($tmpFile);
         $facturasIds = array_filter(explode("\n", trim($fileContent)));
 
-        Tools::log()->info('DEBUG: File content: "' . $fileContent . '"');
-        Tools::log()->info('DEBUG: Found ' . count($facturasIds) . ' invoice IDs: ' . implode(', ', $facturasIds));
-
         if (empty($facturasIds)) {
             Tools::log()->warning('no-invoices-to-send');
             @unlink($tmpFile);
@@ -821,25 +822,19 @@ class Megafacturador extends Controller
         foreach ($facturasIds as $id) {
             $factura = new FacturaCliente();
             if ($factura->loadFromCode($id)) {
-                Tools::log()->info('DEBUG: Loaded invoice ID=' . $id . ' codigo=' . $factura->codigo . ' cliente=' . $factura->nombrecliente . ' email=' . $factura->email);
                 $facturas[] = $factura;
             }
         }
 
-        Tools::log()->info('DEBUG: Total facturas loaded in array: ' . count($facturas));
-
         $enviados = 0;
         $errores = 0;
 
-        foreach ($facturas as $index => $factura) {
-            Tools::log()->info('DEBUG SEND [' . $index . ']: Processing invoice ID=' . $factura->primaryColumnValue() . ' codigo=' . $factura->codigo . ' cliente=' . $factura->nombrecliente . ' email="' . $factura->email . '"');
-
+        foreach ($facturas as $factura) {
             // Get customer to get email if not in invoice
             if (empty($factura->email)) {
                 $cliente = new Cliente();
                 if ($cliente->loadFromCode($factura->codcliente)) {
                     $factura->email = $cliente->email;
-                    Tools::log()->info('DEBUG SEND: Got email from customer: "' . $factura->email . '"');
                 }
             }
 
@@ -857,8 +852,6 @@ class Megafacturador extends Controller
 
             // Generate PDF using ExportManager (like native FacturaScripts)
             try {
-                Tools::log()->info('DEBUG PDF: About to generate PDF for invoice codigo=' . $factura->codigo . ' cliente=' . $factura->nombrecliente);
-
                 $export = new ExportManager();
                 $export->newDoc('PDF');
                 $export->addBusinessDocPage($factura);
@@ -875,8 +868,6 @@ class Megafacturador extends Controller
                            '<p>Atentamente,<br>' . $empresaNombre . '</p>';
 
                 // Create and send email with PDF attachment
-                Tools::log()->info('DEBUG EMAIL: Sending to email="' . $factura->email . '" name="' . $factura->nombrecliente . '" subject="' . $empresaNombre . ' - Factura ' . $factura->codigo . '" attachment="' . $pdfFileName . '"');
-
                 $mail = NewMail::create()
                     ->to($factura->email, $factura->nombrecliente)
                     ->subject($empresaNombre . ' - Factura ' . $factura->codigo)
