@@ -808,11 +808,10 @@ class Megafacturador extends Controller
         }
 
         // Load invoices by their IDs
-        $facturaModel = new FacturaCliente();
         $facturas = [];
         foreach ($facturasIds as $id) {
-            $factura = $facturaModel->get($id);
-            if ($factura) {
+            $factura = new FacturaCliente();
+            if ($factura->loadFromCode($id)) {
                 $facturas[] = $factura;
             }
         }
