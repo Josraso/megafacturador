@@ -277,28 +277,33 @@ class Megafacturador extends Controller
      *
      * @param string $modelName
      * @param string|null $codserie Filter by serie code
+     * @param string|null $year Filter by year (YYYY format)
      * @return string|null
      */
-    private function getUltimaFechaFactura(string $modelName, ?string $codserie = null): ?string
+    private function getUltimaFechaFactura(string $modelName, ?string $codserie = null, ?string $year = null): ?string
     {
         $className = 'FacturaScripts\\Dinamic\\Model\\' . $modelName;
         $model = new $className();
 
-        // Get last invoice ordered by date DESC, filtered by serie if provided
+        // Get last invoice ordered by date DESC, filtered by serie and year if provided
         $where = [];
         if ($codserie !== null) {
             $where[] = new DataBaseWhere('codserie', $codserie);
+        }
+        if ($year !== null) {
+            // Filter by year using LIKE pattern for dd-mm-yyyy format
+            $where[] = new DataBaseWhere('fecha', '%-' . $year, 'LIKE');
         }
 
         $facturas = $model->all($where, ['fecha' => 'DESC'], 0, 1);
 
         if (!empty($facturas)) {
             $fecha = $facturas[0]->fecha;
-            Tools::log()->info('DEBUG getUltimaFechaFactura: model=' . $modelName . ' serie=' . ($codserie ?? 'ALL') . ' fecha=' . $fecha);
+            Tools::log()->info('DEBUG getUltimaFechaFactura: model=' . $modelName . ' serie=' . ($codserie ?? 'ALL') . ' year=' . ($year ?? 'ALL') . ' fecha=' . $fecha);
             return $fecha;
         }
 
-        Tools::log()->info('DEBUG getUltimaFechaFactura: model=' . $modelName . ' serie=' . ($codserie ?? 'ALL') . ' NO FOUND');
+        Tools::log()->info('DEBUG getUltimaFechaFactura: model=' . $modelName . ' serie=' . ($codserie ?? 'ALL') . ' year=' . ($year ?? 'ALL') . ' NO FOUND');
         return null;
     }
 
@@ -356,8 +361,11 @@ class Megafacturador extends Controller
                 if (empty($albaranes)) {
                     // Already invoiced when grouping, skip
                 } else {
-                    // Get last invoice date for THIS SERIE
-                    $ultimaFechaCliente = $this->getUltimaFechaFactura('FacturaCliente', $alb->codserie);
+                    // Get year from albaran (format dd-mm-yyyy, year at position 6-9)
+                    $yearAlbaran = substr($alb->fecha, 6, 4);
+
+                    // Get last invoice date for THIS SERIE AND YEAR
+                    $ultimaFechaCliente = $this->getUltimaFechaFactura('FacturaCliente', $alb->codserie, $yearAlbaran);
 
                     // Create NEW generator for each invoice to avoid reusing same instance
                     $generator = new BusinessDocumentGenerator();
@@ -391,8 +399,11 @@ class Megafacturador extends Controller
                 if (empty($albaranes)) {
                     // Already invoiced when grouping, skip
                 } else {
-                    // Get last invoice date for THIS SERIE
-                    $ultimaFechaProveedor = $this->getUltimaFechaFactura('FacturaProveedor', $alb->codserie);
+                    // Get year from albaran (format dd-mm-yyyy, year at position 6-9)
+                    $yearAlbaran = substr($alb->fecha, 6, 4);
+
+                    // Get last invoice date for THIS SERIE AND YEAR
+                    $ultimaFechaProveedor = $this->getUltimaFechaFactura('FacturaProveedor', $alb->codserie, $yearAlbaran);
 
                     // Create NEW generator for each invoice to avoid reusing same instance
                     $generator = new BusinessDocumentGenerator();
@@ -485,39 +496,28 @@ class Megafacturador extends Controller
             // Use custom date (today)
             $properties['fecha'] = $fecha;
         } else {
-            // CRITICAL: Check if albaran is older than last invoice (SAME YEAR only)
+            // Check if albaran is older than last invoice (already filtered by same serie and year)
             $fechaFactura = $prototype->fecha;
 
             Tools::log()->info('DEBUG FECHA: albaran=' . $prototype->codigo . ' serie=' . $prototype->codserie . ' fecha_albaran=' . $prototype->fecha . ' ultima_factura_fecha=' . ($ultimaFechaFactura ?? 'NULL'));
 
-            // If albaran is delayed (older than last invoice) AND same year, use last invoice date
+            // If there's a last invoice from same serie and year, and albaran is older, use last invoice date
             if ($ultimaFechaFactura) {
-                // Extract years from dd-mm-yyyy format (year is at position 6-9)
-                $yearAlbaran = substr($prototype->fecha, 6, 4);
-                $yearUltimaFactura = substr($ultimaFechaFactura, 6, 4);
+                // Compare dates properly using strtotime
+                $timestampAlbaran = strtotime($prototype->fecha);
+                $timestampUltimaFactura = strtotime($ultimaFechaFactura);
 
-                Tools::log()->info('DEBUG FECHA: año_albaran=' . $yearAlbaran . ' año_ultima_factura=' . $yearUltimaFactura);
+                Tools::log()->info('DEBUG FECHA: comparando timestamps albaran=' . $timestampAlbaran . ' ultima=' . $timestampUltimaFactura);
 
-                // Only adjust date if SAME YEAR and albaran is older
-                if ($yearAlbaran === $yearUltimaFactura) {
-                    // Compare dates properly using strtotime
-                    $timestampAlbaran = strtotime($prototype->fecha);
-                    $timestampUltimaFactura = strtotime($ultimaFechaFactura);
+                if ($timestampAlbaran < $timestampUltimaFactura) {
+                    $fechaFactura = $ultimaFechaFactura;
 
-                    Tools::log()->info('DEBUG FECHA: comparando timestamps albaran=' . $timestampAlbaran . ' ultima=' . $timestampUltimaFactura);
-
-                    if ($timestampAlbaran < $timestampUltimaFactura) {
-                        $fechaFactura = $ultimaFechaFactura;
-
-                        Tools::log()->warning('delayed-albaran-invoiced-with-later-date', [
-                            '%albaran%' => $prototype->codigo,
-                            '%albaran-date%' => $prototype->fecha,
-                            '%invoice-date%' => $fechaFactura,
-                            '%customer%' => $prototype->nombrecliente
-                        ]);
-                    }
-                } else {
-                    Tools::log()->info('DEBUG FECHA: años diferentes (' . $yearAlbaran . ' vs ' . $yearUltimaFactura . '), usar fecha albaran original');
+                    Tools::log()->warning('delayed-albaran-invoiced-with-later-date', [
+                        '%albaran%' => $prototype->codigo,
+                        '%albaran-date%' => $prototype->fecha,
+                        '%invoice-date%' => $fechaFactura,
+                        '%customer%' => $prototype->nombrecliente
+                    ]);
                 }
             }
 
@@ -641,31 +641,24 @@ class Megafacturador extends Controller
             // Use custom date (today)
             $properties['fecha'] = $fecha;
         } else {
-            // CRITICAL: Check if albaran is older than last invoice (SAME YEAR only)
+            // Check if albaran is older than last invoice (already filtered by same serie and year)
             $fechaFactura = $prototype->fecha;
 
-            // If albaran is delayed (older than last invoice) AND same year, use last invoice date
+            // If there's a last invoice from same serie and year, and albaran is older, use last invoice date
             if ($ultimaFechaFactura) {
-                // Extract years from dd-mm-yyyy format (year is at position 6-9)
-                $yearAlbaran = substr($prototype->fecha, 6, 4);
-                $yearUltimaFactura = substr($ultimaFechaFactura, 6, 4);
+                // Compare dates properly using strtotime
+                $timestampAlbaran = strtotime($prototype->fecha);
+                $timestampUltimaFactura = strtotime($ultimaFechaFactura);
 
-                // Only adjust date if SAME YEAR and albaran is older
-                if ($yearAlbaran === $yearUltimaFactura) {
-                    // Compare dates properly using strtotime
-                    $timestampAlbaran = strtotime($prototype->fecha);
-                    $timestampUltimaFactura = strtotime($ultimaFechaFactura);
+                if ($timestampAlbaran < $timestampUltimaFactura) {
+                    $fechaFactura = $ultimaFechaFactura;
 
-                    if ($timestampAlbaran < $timestampUltimaFactura) {
-                        $fechaFactura = $ultimaFechaFactura;
-
-                        Tools::log()->warning('delayed-albaran-invoiced-with-later-date', [
-                            '%albaran%' => $prototype->codigo,
-                            '%albaran-date%' => $prototype->fecha,
-                            '%invoice-date%' => $fechaFactura,
-                            '%supplier%' => $prototype->nombre
-                        ]);
-                    }
+                    Tools::log()->warning('delayed-albaran-invoiced-with-later-date', [
+                        '%albaran%' => $prototype->codigo,
+                        '%albaran-date%' => $prototype->fecha,
+                        '%invoice-date%' => $fechaFactura,
+                        '%supplier%' => $prototype->nombre
+                    ]);
                 }
             }
 
