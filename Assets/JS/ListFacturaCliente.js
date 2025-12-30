@@ -23,41 +23,26 @@ function megafacSendMassEmails() {
         return;
     }
 
-    // Create form and submit to MegafacturadorEmail controller
-    var form = document.createElement('form');
-    form.method = 'POST';
-    form.action = 'index.php?page=MegafacturadorEmail';
-
-    // Add action
-    var actionInput = document.createElement('input');
-    actionInput.type = 'hidden';
-    actionInput.name = 'action';
-    actionInput.value = 'send-emails';
-    form.appendChild(actionInput);
-
-    // Add model type
-    var modelInput = document.createElement('input');
-    modelInput.type = 'hidden';
-    modelInput.name = 'model';
-    modelInput.value = 'FacturaCliente';
-    form.appendChild(modelInput);
-
-    // Add return URL
-    var returnInput = document.createElement('input');
-    returnInput.type = 'hidden';
-    returnInput.name = 'return_url';
-    returnInput.value = window.location.href;
-    form.appendChild(returnInput);
-
-    // Add selected codes
+    // Get codes
+    var codes = [];
     selectedBoxes.forEach(function(checkbox) {
-        var input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 'code[]';
-        input.value = checkbox.value;
-        form.appendChild(input);
+        codes.push(checkbox.value);
     });
 
-    document.body.appendChild(form);
-    form.submit();
+    // Send AJAX request to current page with action
+    var formData = new FormData();
+    formData.append('action', 'megafac-send-emails');
+    codes.forEach(function(code) {
+        formData.append('codes[]', code);
+    });
+
+    fetch(window.location.href, {
+        method: 'POST',
+        body: formData
+    }).then(function(response) {
+        // Reload page to show messages
+        window.location.reload();
+    }).catch(function(error) {
+        alert('Error al enviar emails: ' + error);
+    });
 }
