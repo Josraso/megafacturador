@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Extension XMLView for ListFacturaProveedor
+    Adds mass email sending button
+-->
+<view>
+    <rows>
+        <row type="actions">
+            <button action="megafacSendMassEmailsProveedor" color="primary" icon="fas fa-envelope" label="send-mass-emails" type="js"/>
+        </row>
+    </rows>
+</view>
