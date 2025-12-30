@@ -26,7 +26,7 @@ function megafacSendMassEmailsProveedor() {
     // Create form and submit to MegafacturadorEmail controller
     var form = document.createElement('form');
     form.method = 'POST';
-    form.action = 'MegafacturadorEmail';
+    form.action = 'index.php?page=MegafacturadorEmail';
 
     // Add action
     var actionInput = document.createElement('input');
