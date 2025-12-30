@@ -52,6 +52,11 @@ class MegafacturadorEmail extends Controller
         $modelType = $this->request->request->get('model', '');
         $codes = $this->request->request->get('code', []);
 
+        // Ensure $codes is always an array
+        if (!is_array($codes)) {
+            $codes = [$codes];
+        }
+
         if ($action === 'send-emails' && !empty($codes)) {
             if ($modelType === 'FacturaCliente') {
                 $this->sendFacturaClienteEmails($codes);

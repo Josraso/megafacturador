@@ -2,19 +2,9 @@
  * ListFacturaProveedor - Mass email sending functionality
  */
 
-console.log('MEGAFAC: ListFacturaProveedor.js LOADED');
-
 function megafacSendMassEmailsProveedor() {
-    console.log('MEGAFAC: megafacSendMassEmailsProveedor called');
-
-    // Try different selectors to find checkboxes
+    // Get all checked checkboxes
     var checkboxes = document.querySelectorAll('input[type="checkbox"]:checked');
-    console.log('MEGAFAC: Found checkboxes:', checkboxes.length);
-
-    // Log checkbox names to debug
-    checkboxes.forEach(function(cb) {
-        console.log('MEGAFAC: Checkbox name:', cb.name, 'value:', cb.value);
-    });
 
     // Filter out the "select all" checkbox if exists
     var selectedBoxes = [];
@@ -23,8 +13,6 @@ function megafacSendMassEmailsProveedor() {
             selectedBoxes.push(cb);
         }
     });
-
-    console.log('MEGAFAC: Selected boxes (filtered):', selectedBoxes.length);
 
     if (selectedBoxes.length === 0) {
         alert('Por favor, selecciona al menos una factura');
