@@ -364,15 +364,12 @@ class Megafacturador extends Controller
                     // Get year from albaran (format dd-mm-yyyy, year at position 6-9)
                     $yearAlbaran = substr($alb->fecha, 6, 4);
 
-                    // Get last invoice date for THIS SERIE AND YEAR
+                    // Get last invoice date for THIS SERIE AND YEAR ONLY
                     $ultimaFechaSerieYear = $this->getUltimaFechaFactura('FacturaCliente', $alb->codserie, $yearAlbaran);
-
-                    // Get last invoice date GLOBAL (any serie, any year)
-                    $ultimaFechaGlobal = $this->getUltimaFechaFactura('FacturaCliente');
 
                     // Create NEW generator for each invoice to avoid reusing same instance
                     $generator = new BusinessDocumentGenerator();
-                    if ($this->facturarAlbaranCliente($generator, $albaranes, $fecha, $ultimaFechaSerieYear, $ultimaFechaGlobal, $tmpFile)) {
+                    if ($this->facturarAlbaranCliente($generator, $albaranes, $fecha, $ultimaFechaSerieYear, $tmpFile)) {
                         $total1++;
                         $recargar = true;
                     } else {
@@ -405,15 +402,12 @@ class Megafacturador extends Controller
                     // Get year from albaran (format dd-mm-yyyy, year at position 6-9)
                     $yearAlbaran = substr($alb->fecha, 6, 4);
 
-                    // Get last invoice date for THIS SERIE AND YEAR
+                    // Get last invoice date for THIS SERIE AND YEAR ONLY
                     $ultimaFechaSerieYear = $this->getUltimaFechaFactura('FacturaProveedor', $alb->codserie, $yearAlbaran);
-
-                    // Get last invoice date GLOBAL (any serie, any year)
-                    $ultimaFechaGlobal = $this->getUltimaFechaFactura('FacturaProveedor');
 
                     // Create NEW generator for each invoice to avoid reusing same instance
                     $generator = new BusinessDocumentGenerator();
-                    if ($this->facturarAlbaranProveedor($generator, $albaranes, $fecha, $ultimaFechaSerieYear, $ultimaFechaGlobal, $tmpFile)) {
+                    if ($this->facturarAlbaranProveedor($generator, $albaranes, $fecha, $ultimaFechaSerieYear, $tmpFile)) {
                         $total2++;
                         $recargar = true;
                     } else {
@@ -460,12 +454,11 @@ class Megafacturador extends Controller
      * @param array $albaranes
      * @param string|null $fecha
      * @param string|null $ultimaFechaSerieYear Last invoice of same serie and year
-     * @param string|null $ultimaFechaGlobal Last invoice globally (any serie, any year)
      * @param string $tmpFile
      *
      * @return bool
      */
-    private function facturarAlbaranCliente($generator, array $albaranes, ?string $fecha, ?string $ultimaFechaSerieYear, ?string $ultimaFechaGlobal, string $tmpFile): bool
+    private function facturarAlbaranCliente($generator, array $albaranes, ?string $fecha, ?string $ultimaFechaSerieYear, string $tmpFile): bool
     {
         if (empty($albaranes)) {
             return false;
@@ -506,7 +499,7 @@ class Megafacturador extends Controller
             // Decide which date to use for the invoice
             $fechaFactura = $prototype->fecha;
 
-            Tools::log()->info('DEBUG FECHA: albaran=' . $prototype->codigo . ' serie=' . $prototype->codserie . ' fecha_albaran=' . $prototype->fecha . ' ultima_serie_year=' . ($ultimaFechaSerieYear ?? 'NULL') . ' ultima_global=' . ($ultimaFechaGlobal ?? 'NULL'));
+            Tools::log()->info('DEBUG FECHA: albaran=' . $prototype->codigo . ' serie=' . $prototype->codserie . ' fecha_albaran=' . $prototype->fecha . ' ultima_serie_year=' . ($ultimaFechaSerieYear ?? 'NULL'));
 
             // If there's a last invoice from same serie and year, compare with it
             if ($ultimaFechaSerieYear) {
@@ -518,22 +511,7 @@ class Megafacturador extends Controller
                     Tools::log()->info('DEBUG FECHA: usando ultima de serie+año');
                 }
             }
-            // If NO last invoice from same serie+year, but there IS a global last invoice
-            elseif ($ultimaFechaGlobal) {
-                $timestampAlbaran = strtotime($prototype->fecha);
-                $timestampGlobal = strtotime($ultimaFechaGlobal);
-
-                // If albaran is older than global last invoice, use global date
-                if ($timestampAlbaran < $timestampGlobal) {
-                    $fechaFactura = $ultimaFechaGlobal;
-                    Tools::log()->warning('delayed-albaran-old-year-using-global-date', [
-                        '%albaran%' => $prototype->codigo,
-                        '%albaran-date%' => $prototype->fecha,
-                        '%invoice-date%' => $fechaFactura,
-                        '%customer%' => $prototype->nombrecliente
-                    ]);
-                }
-            }
+            // If NO last invoice from same serie+year, use albaran's own date (NEVER mix years)
 
             Tools::log()->info('DEBUG FECHA: fecha_final_a_usar=' . $fechaFactura);
 
@@ -613,12 +591,11 @@ class Megafacturador extends Controller
      * @param array $albaranes
      * @param string|null $fecha
      * @param string|null $ultimaFechaSerieYear Last invoice of same serie and year
-     * @param string|null $ultimaFechaGlobal Last invoice globally (any serie, any year)
      * @param string $tmpFile
      *
      * @return bool
      */
-    private function facturarAlbaranProveedor($generator, array $albaranes, ?string $fecha, ?string $ultimaFechaSerieYear, ?string $ultimaFechaGlobal, string $tmpFile): bool
+    private function facturarAlbaranProveedor($generator, array $albaranes, ?string $fecha, ?string $ultimaFechaSerieYear, string $tmpFile): bool
     {
         if (empty($albaranes)) {
             return false;
@@ -668,22 +645,7 @@ class Megafacturador extends Controller
                     $fechaFactura = $ultimaFechaSerieYear;
                 }
             }
-            // If NO last invoice from same serie+year, but there IS a global last invoice
-            elseif ($ultimaFechaGlobal) {
-                $timestampAlbaran = strtotime($prototype->fecha);
-                $timestampGlobal = strtotime($ultimaFechaGlobal);
-
-                // If albaran is older than global last invoice, use global date
-                if ($timestampAlbaran < $timestampGlobal) {
-                    $fechaFactura = $ultimaFechaGlobal;
-                    Tools::log()->warning('delayed-albaran-old-year-using-global-date', [
-                        '%albaran%' => $prototype->codigo,
-                        '%albaran-date%' => $prototype->fecha,
-                        '%invoice-date%' => $fechaFactura,
-                        '%supplier%' => $prototype->nombre
-                    ]);
-                }
-            }
+            // If NO last invoice from same serie+year, use albaran's own date (NEVER mix years)
 
             $properties['fecha'] = $fechaFactura;
         }
