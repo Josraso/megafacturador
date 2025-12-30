@@ -221,8 +221,10 @@ class Megafacturador extends Controller
         }
 
         if (!empty($this->opciones['megafac_hasta'])) {
-            Tools::log()->info('DEBUG FILTRO: megafac_hasta=' . $this->opciones['megafac_hasta']);
-            $where[] = new DataBaseWhere('fecha', $this->opciones['megafac_hasta'], '<=');
+            // Convert Y-m-d format to dd-mm-yyyy format for database comparison
+            $fechaHasta = date('d-m-Y', strtotime($this->opciones['megafac_hasta']));
+            Tools::log()->info('DEBUG FILTRO: megafac_hasta (Y-m-d)=' . $this->opciones['megafac_hasta'] . ' converted (dd-mm-yyyy)=' . $fechaHasta);
+            $where[] = new DataBaseWhere('fecha', $fechaHasta, '<=');
         }
 
         return $where;
