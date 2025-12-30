@@ -20,7 +20,6 @@
 namespace FacturaScripts\Plugins\Megafacturador;
 
 use FacturaScripts\Core\Template\InitClass;
-use FacturaScripts\Dinamic\Lib\AssetManager;
 
 /**
  * Plugin initialization class
@@ -29,8 +28,8 @@ final class Init extends InitClass
 {
     public function init(): void
     {
-        // Load JavaScript for mass email functionality
-        AssetManager::addJs(FS_ROUTE . '/Plugins/Megafacturador/Assets/JS/MegafacturadorEmail.js');
+        // JavaScript files are automatically loaded when they match controller names
+        // ListFacturaCliente.js and ListFacturaProveedor.js load automatically
     }
 
     public function update(): void
