@@ -21,9 +21,11 @@ namespace FacturaScripts\Plugins\Megafacturador\Controller;
 
 use FacturaScripts\Core\Base\Controller;
 use FacturaScripts\Core\Base\DataBase\DataBaseWhere;
+use FacturaScripts\Core\Base\ExportManager;
 use FacturaScripts\Core\Tools;
 use FacturaScripts\Dinamic\Lib\Accounting\AccountingAccounts;
 use FacturaScripts\Dinamic\Lib\BusinessDocumentGenerator;
+use FacturaScripts\Dinamic\Lib\Email\EmailTools;
 use FacturaScripts\Dinamic\Model\AlbaranCliente;
 use FacturaScripts\Dinamic\Model\AlbaranProveedor;
 use FacturaScripts\Dinamic\Model\Cliente;
@@ -838,7 +840,7 @@ class Megafacturador extends Controller
             }
 
             // Send email with invoice PDF attached
-            $emailTools = new \FacturaScripts\Dinamic\Lib\Email\EmailTools();
+            $emailTools = new EmailTools();
             $mail = $emailTools->newMail();
             $mail->addAddress($factura->email, $factura->nombrecliente);
 
@@ -859,7 +861,7 @@ class Megafacturador extends Controller
 
             // Attach PDF using export manager
             try {
-                $exportManager = new \FacturaScripts\Core\Base\ExportManager();
+                $exportManager = new ExportManager();
                 $exportManager->newDoc('PDF', $factura->modelClassName());
                 $exportManager->addModelPage($factura->modelClassName(), $factura->codigo, [], $factura->codigo);
 
