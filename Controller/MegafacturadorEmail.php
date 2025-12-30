@@ -72,11 +72,17 @@ class MegafacturadorEmail extends Controller
         $this->tmpFile = sys_get_temp_dir() . '/megafac_' . $runId . '.txt';
         $this->totalFacturas = 0;
 
+        Tools::log()->info('DEBUG EMAIL: Received runid: ' . $runId);
+        Tools::log()->info('DEBUG EMAIL: Looking for file: ' . $this->tmpFile);
+        Tools::log()->info('DEBUG EMAIL: File exists: ' . (file_exists($this->tmpFile) ? 'YES' : 'NO'));
+
         // Count invoices to send
         if (file_exists($this->tmpFile)) {
             $fileContent = file_get_contents($this->tmpFile);
+            Tools::log()->info('DEBUG EMAIL: File content: ' . $fileContent);
             $facturasIds = array_filter(explode("\n", trim($fileContent)));
             $this->totalFacturas = count($facturasIds);
+            Tools::log()->info('DEBUG EMAIL: Total invoices: ' . $this->totalFacturas);
         }
 
         // Send emails if requested
@@ -184,7 +190,7 @@ class MegafacturadorEmail extends Controller
         // Clean up temp file after sending
         @unlink($this->tmpFile);
 
-        // Redirect back to megafacturador
-        $this->redirect($this->url() . '?page=Megafacturador');
+        // Redirect back to megafacturador using header
+        $this->response->headers->set('Refresh', '2; url=index.php?page=Megafacturador');
     }
 }

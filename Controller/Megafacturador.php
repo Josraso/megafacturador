@@ -401,7 +401,8 @@ class Megafacturador extends Controller
             Tools::log()->notice('Finished.');
             if ($this->opciones['megafac_email']) {
                 // Redirect to email sending page
-                $this->redirect($this->url() . '?page=MegafacturadorEmail&runid=' . $runId);
+                Tools::log()->info('DEBUG: Redirecting to email page with runid: ' . $runId);
+                $this->response->headers->set('Refresh', '0; url=index.php?page=MegafacturadorEmail&runid=' . $runId);
             } else {
                 // Clean up temp file if not sending emails
                 if (file_exists($tmpFile)) {
