@@ -481,9 +481,9 @@ class Megafacturador extends Controller
 
             // If albaran is delayed (older than last invoice) AND same year, use last invoice date
             if ($ultimaFechaFactura) {
-                // Extract years first
-                $yearAlbaran = substr($prototype->fecha, 0, 4);
-                $yearUltimaFactura = substr($ultimaFechaFactura, 0, 4);
+                // Extract years from dd-mm-yyyy format (year is at position 6-9)
+                $yearAlbaran = substr($prototype->fecha, 6, 4);
+                $yearUltimaFactura = substr($ultimaFechaFactura, 6, 4);
 
                 Tools::log()->info('DEBUG FECHA: año_albaran=' . $yearAlbaran . ' año_ultima_factura=' . $yearUltimaFactura);
 
@@ -635,9 +635,9 @@ class Megafacturador extends Controller
 
             // If albaran is delayed (older than last invoice) AND same year, use last invoice date
             if ($ultimaFechaFactura) {
-                // Extract years first
-                $yearAlbaran = substr($prototype->fecha, 0, 4);
-                $yearUltimaFactura = substr($ultimaFechaFactura, 0, 4);
+                // Extract years from dd-mm-yyyy format (year is at position 6-9)
+                $yearAlbaran = substr($prototype->fecha, 6, 4);
+                $yearUltimaFactura = substr($ultimaFechaFactura, 6, 4);
 
                 // Only adjust date if SAME YEAR and albaran is older
                 if ($yearAlbaran === $yearUltimaFactura) {
