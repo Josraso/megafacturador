@@ -1,17 +1,10 @@
 {# Extend the original ListFacturaCliente view #}
 {% extends "@Core/ListController.html.twig" %}
 
-{% block listButtons %}
+{% block javascripts %}
     {{ parent() }}
-
-    {# Add mass email button #}
-    <button type="button" class="btn btn-primary" onclick="sendMassEmails()">
-        <i class="fas fa-envelope fa-fw" aria-hidden="true"></i>
-        <span class="d-none d-lg-inline-block">Enviar emails masivos</span>
-    </button>
-
     <script>
-        function sendMassEmails() {
+        function megafacSendMassEmails() {
             // Get all checked checkboxes
             var checkboxes = document.querySelectorAll('input[name="code[]"]:checked');
 
@@ -24,17 +17,31 @@
                 return;
             }
 
-            // Create form and submit
+            // Create form and submit to MegafacturadorEmail controller
             var form = document.createElement('form');
             form.method = 'POST';
-            form.action = window.location.href;
+            form.action = 'MegafacturadorEmail';
 
             // Add action
             var actionInput = document.createElement('input');
             actionInput.type = 'hidden';
             actionInput.name = 'action';
-            actionInput.value = 'megafac-send-emails';
+            actionInput.value = 'send-emails';
             form.appendChild(actionInput);
+
+            // Add model type
+            var modelInput = document.createElement('input');
+            modelInput.type = 'hidden';
+            modelInput.name = 'model';
+            modelInput.value = 'FacturaCliente';
+            form.appendChild(modelInput);
+
+            // Add return URL
+            var returnInput = document.createElement('input');
+            returnInput.type = 'hidden';
+            returnInput.name = 'return_url';
+            returnInput.value = window.location.href;
+            form.appendChild(returnInput);
 
             // Add selected codes
             checkboxes.forEach(function(checkbox) {
@@ -48,5 +55,18 @@
             document.body.appendChild(form);
             form.submit();
         }
+
+        // Add button to toolbar when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            var toolbar = document.querySelector('.btn-toolbar');
+            if (toolbar) {
+                var btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = 'btn btn-primary';
+                btn.onclick = megafacSendMassEmails;
+                btn.innerHTML = '<i class="fas fa-envelope fa-fw"></i> <span class="d-none d-lg-inline-block">Enviar emails masivos</span>';
+                toolbar.appendChild(btn);
+            }
+        });
     </script>
 {% endblock %}
