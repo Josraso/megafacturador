@@ -58,10 +58,22 @@ class MegafacturadorEmail extends Controller
         }
 
         if ($action === 'send-emails' && !empty($codes)) {
+            Tools::log()->notice('MEGAFAC DEBUG: Iniciando envío de emails para ' . count($codes) . ' documentos');
+
+            $result = ['enviados' => 0, 'errores' => 0];
+
             if ($modelType === 'FacturaCliente') {
-                $this->sendFacturaClienteEmails($codes);
+                $result = $this->sendFacturaClienteEmails($codes);
             } elseif ($modelType === 'FacturaProveedor') {
-                $this->sendFacturaProveedorEmails($codes);
+                $result = $this->sendFacturaProveedorEmails($codes);
+            }
+
+            // Show summary message
+            if ($result['enviados'] > 0) {
+                Tools::log()->notice('Se enviaron ' . $result['enviados'] . ' emails correctamente');
+            }
+            if ($result['errores'] > 0) {
+                Tools::log()->warning('Hubo ' . $result['errores'] . ' errores al enviar emails');
             }
 
             // Redirect back to list
@@ -73,12 +85,15 @@ class MegafacturadorEmail extends Controller
         }
     }
 
-    private function sendFacturaClienteEmails(array $codes): void
+    private function sendFacturaClienteEmails(array $codes): array
     {
         $enviados = 0;
         $errores = 0;
 
+        Tools::log()->notice('MEGAFAC DEBUG: sendFacturaClienteEmails recibió ' . count($codes) . ' códigos');
+
         foreach ($codes as $code) {
+            Tools::log()->notice('MEGAFAC DEBUG: Procesando factura: ' . $code);
             $factura = new FacturaCliente();
             if (!$factura->loadFromCode($code)) {
                 continue;
@@ -106,6 +121,7 @@ class MegafacturadorEmail extends Controller
 
             // Generate PDF and send email
             try {
+                Tools::log()->notice('MEGAFAC DEBUG: Generando PDF para ' . $factura->codigo);
                 $export = new ExportManager();
                 $export->newDoc('PDF');
                 $export->addBusinessDocPage($factura);
@@ -115,6 +131,7 @@ class MegafacturadorEmail extends Controller
                 $pdfFileName = 'factura_' . $factura->codigo . '.pdf';
                 $pdfPath = sys_get_temp_dir() . '/' . $pdfFileName;
                 file_put_contents($pdfPath, $pdfContent);
+                Tools::log()->notice('MEGAFAC DEBUG: PDF guardado en ' . $pdfPath . ', tamaño: ' . strlen($pdfContent) . ' bytes');
 
                 // Prepare email body
                 $bodyHtml = '<p>Estimado/a <strong>' . $factura->nombrecliente . '</strong>,</p>' .
@@ -122,6 +139,7 @@ class MegafacturadorEmail extends Controller
                            '<p>Atentamente,<br>' . $empresaNombre . '</p>';
 
                 // Create and send email
+                Tools::log()->notice('MEGAFAC DEBUG: Creando email para ' . $factura->email);
                 $mail = NewMail::create()
                     ->to($factura->email, $factura->nombrecliente)
                     ->subject($empresaNombre . ' - Factura ' . $factura->codigo)
@@ -129,7 +147,11 @@ class MegafacturadorEmail extends Controller
                     ->addAttachment($pdfPath, $pdfFileName);
 
                 // Send
-                if ($mail->send()) {
+                Tools::log()->notice('MEGAFAC DEBUG: Intentando enviar email...');
+                $sendResult = $mail->send();
+                Tools::log()->notice('MEGAFAC DEBUG: Resultado del send(): ' . ($sendResult ? 'TRUE' : 'FALSE'));
+
+                if ($sendResult) {
                     $enviados++;
 
                     // Mark invoice as sent
@@ -137,10 +159,10 @@ class MegafacturadorEmail extends Controller
                     $factura->horamail = date('H:i:s');
                     $factura->save();
 
-                    Tools::log()->info('invoice-email-sent', ['%invoice%' => $factura->codigo, '%email%' => $factura->email]);
+                    Tools::log()->info('MEGAFAC DEBUG: Email enviado OK - invoice-email-sent', ['%invoice%' => $factura->codigo, '%email%' => $factura->email]);
                 } else {
                     $errores++;
-                    Tools::log()->error('invoice-email-failed', ['%invoice%' => $factura->codigo]);
+                    Tools::log()->error('MEGAFAC DEBUG: Email FALLÓ - invoice-email-failed', ['%invoice%' => $factura->codigo]);
                 }
 
                 // Clean up temporary PDF file
@@ -152,15 +174,19 @@ class MegafacturadorEmail extends Controller
             }
         }
 
-        Tools::log()->notice($enviados . ' emails sent, ' . $errores . ' errors.');
+        Tools::log()->notice('MEGAFAC DEBUG: Finalizado - Enviados: ' . $enviados . ', Errores: ' . $errores);
+        return ['enviados' => $enviados, 'errores' => $errores];
     }
 
-    private function sendFacturaProveedorEmails(array $codes): void
+    private function sendFacturaProveedorEmails(array $codes): array
     {
         $enviados = 0;
         $errores = 0;
 
+        Tools::log()->notice('MEGAFAC DEBUG: sendFacturaProveedorEmails recibió ' . count($codes) . ' códigos');
+
         foreach ($codes as $code) {
+            Tools::log()->notice('MEGAFAC DEBUG: Procesando factura proveedor: ' . $code);
             $factura = new FacturaProveedor();
             if (!$factura->loadFromCode($code)) {
                 continue;
@@ -234,6 +260,7 @@ class MegafacturadorEmail extends Controller
             }
         }
 
-        Tools::log()->notice($enviados . ' emails sent, ' . $errores . ' errors.');
+        Tools::log()->notice('MEGAFAC DEBUG: Finalizado - Enviados: ' . $enviados . ', Errores: ' . $errores);
+        return ['enviados' => $enviados, 'errores' => $errores];
     }
 }
