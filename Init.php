@@ -32,4 +32,14 @@ final class Init extends InitClass
         // Load JavaScript for mass email functionality
         AssetManager::addJs(FS_ROUTE . '/Plugins/Megafacturador/Assets/JS/MegafacturadorEmail.js');
     }
+
+    public function update(): void
+    {
+        // No additional update actions needed
+    }
+
+    public function uninstall(): void
+    {
+        // No additional uninstall actions needed
+    }
 }
