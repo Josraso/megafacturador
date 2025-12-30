@@ -181,44 +181,5 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
                 </div>
             </div>
         </form>
-
-        <div class="row">
-            <div class="col-sm-12">
-                <h2 class="mt-4">
-                    <i class="fas fa-info-circle" aria-hidden="true"></i> Otras opciones
-                </h2>
-                <hr/>
-            </div>
-        </div>
-        <div class="row">
-            <div class="col-md-4 mb-3">
-                <a href="{{ fsc.url() }}&genasientos=TRUE" class="btn btn-outline-secondary w-100">
-                    <i class="fas fa-balance-scale" aria-hidden="true"></i> Generar asientos
-                    {% if fsc.numasientos > 0 %}
-                        <span class="badge bg-danger">{{ fsc.numasientos }}</span>
-                    {% endif %}
-                </a>
-            </div>
-            <div class="col-md-4 mb-3">
-                <p class="text-muted small">
-                    Genera los asientos de las facturas que no tengan. Si tienes activada
-                    la contabilidad integrada, los asientos contables de las facturas se
-                    generan automáticamente, pero si por algún motivo tienes facturas sin
-                    asientos o quieres generarlos ahora, simplemente pulsa el botón.
-                </p>
-            </div>
-            <div class="col-md-4 mb-3">
-                {% if not fsc.empresa.contintegrada %}
-                    <a href="{{ fsc.url() }}&activar_contintegrada=TRUE" class="btn btn-warning w-100">
-                        <i class="fas fa-toggle-on" aria-hidden="true"></i>
-                        Activar contabilidad integrada
-                    </a>
-                    <p class="text-muted small mt-2">
-                        <i class="fas fa-info-circle" aria-hidden="true"></i>
-                        Activa la contabilidad integrada para que los asientos se generen automáticamente.
-                    </p>
-                {% endif %}
-            </div>
-        </div>
     </div>
 {% endblock %}

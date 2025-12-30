@@ -23,7 +23,6 @@ use FacturaScripts\Core\Base\Controller;
 use FacturaScripts\Core\Base\DataBase\DataBaseWhere;
 use FacturaScripts\Core\Lib\Email\NewMail;
 use FacturaScripts\Core\Tools;
-use FacturaScripts\Dinamic\Lib\Accounting\AccountingAccounts;
 use FacturaScripts\Dinamic\Lib\BusinessDocumentGenerator;
 use FacturaScripts\Dinamic\Lib\ExportManager;
 use FacturaScripts\Dinamic\Model\AlbaranCliente;
@@ -64,11 +63,6 @@ class Megafacturador extends Controller
      * @var FormaPago[]
      */
     private $formas_pago;
-
-    /**
-     * @var int
-     */
-    public $numasientos;
 
     /**
      * @var array
@@ -124,7 +118,6 @@ class Megafacturador extends Controller
         $this->ejercicios = [];
         $this->forma_pago = new FormaPago();
         $this->formas_pago = $this->forma_pago->all();
-        $this->numasientos = 0;
         $this->serie = new Serie();
         $this->url_recarga = false;
         $this->url_enviar_emails = false;
@@ -137,13 +130,7 @@ class Megafacturador extends Controller
             $this->enviarEmailsFacturas();
         } elseif ($this->request->query->get('procesar') === 'TRUE') {
             $this->generarFacturas();
-        } elseif ($this->request->query->get('genasientos')) {
-            $this->generarAsientos();
-        } elseif ($this->request->query->get('activar_contintegrada')) {
-            $this->activarContabilidadIntegrada();
         }
-
-        $this->numasientos = $this->numAsientosAGenerar();
     }
 
     /**
@@ -187,20 +174,6 @@ class Megafacturador extends Controller
 
         if ($this->request->request->get('procesar') === 'TRUE') {
             $this->generarFacturas();
-        }
-    }
-
-    /**
-     * Enable integrated accounting
-     */
-    private function activarContabilidadIntegrada(): void
-    {
-        $this->empresa->contintegrada = true;
-
-        if ($this->empresa->save()) {
-            Tools::log()->notice('record-updated-correctly');
-        } else {
-            Tools::log()->error('record-save-error');
         }
     }
 
@@ -711,73 +684,6 @@ class Megafacturador extends Controller
     }
 
     /**
-     * Generate accounting entries for invoices
-     */
-    private function generarAsientos(): void
-    {
-        $nuevos = 0;
-        $accountingAccounts = new AccountingAccounts();
-
-        $facturaCliente = new FacturaCliente();
-        $where = [new DataBaseWhere('idasiento', null, 'IS')];
-        $invoices = $facturaCliente->all($where, [], 0, 50);
-
-        foreach ($invoices as $factura) {
-            if (empty($factura->idasiento)) {
-                if ($accountingAccounts->generate($factura)) {
-                    $nuevos++;
-                } else {
-                    break;
-                }
-            }
-        }
-        Tools::log()->notice($nuevos . ' accounting entries generated for sales invoices.');
-
-        $nuevos2 = 0;
-        $facturaProveedor = new FacturaProveedor();
-        $invoices2 = $facturaProveedor->all($where, [], 0, 50);
-
-        foreach ($invoices2 as $factura) {
-            if (empty($factura->idasiento)) {
-                if ($accountingAccounts->generate($factura)) {
-                    $nuevos2++;
-                } else {
-                    break;
-                }
-            }
-        }
-        Tools::log()->notice($nuevos2 . ' accounting entries generated for purchase invoices.');
-
-        // Reload?
-        $errors = Tools::log()->read('', ['critical', 'error']);
-        if (!empty($errors)) {
-            Tools::log()->error('Errors occurred. Process stopped.');
-        } elseif ($this->numAsientosAGenerar() > 0) {
-            $this->url_recarga = $this->url() . '?genasientos=TRUE';
-            Tools::log()->notice('Reloading...');
-        }
-    }
-
-    /**
-     * Count invoices without accounting entry
-     *
-     * @return int
-     */
-    private function numAsientosAGenerar(): int
-    {
-        $num = 0;
-        $where = [new DataBaseWhere('idasiento', null, 'IS')];
-
-        $facturaCliente = new FacturaCliente();
-        $num += $facturaCliente->count($where);
-
-        $facturaProveedor = new FacturaProveedor();
-        $num += $facturaProveedor->count($where);
-
-        return $num;
-    }
-
-    /**
      * Send emails for generated invoices
      */
     private function enviarEmailsFacturas(): void
@@ -861,6 +767,11 @@ class Megafacturador extends Controller
                 if ($mail->send()) {
                     $enviados++;
                     Tools::log()->info('invoice-email-sent', ['%invoice%' => $factura->codigo, '%email%' => $factura->email]);
+
+                    // Mark invoice as sent
+                    $factura->femail = date('d-m-Y');
+                    $factura->horamail = date('H:i:s');
+                    $factura->save();
                 } else {
                     $errores++;
                     Tools::log()->error('invoice-email-failed', ['%invoice%' => $factura->codigo]);
