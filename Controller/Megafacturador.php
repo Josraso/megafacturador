@@ -477,10 +477,11 @@ class Megafacturador extends Controller
             // CRITICAL: Check if albaran is older than last invoice
             $fechaFactura = $prototype->fecha;
 
-            // If albaran is delayed (older than last invoice), use last invoice date + 1 day
+            Tools::log()->info('DEBUG FECHA: albaran=' . $prototype->codigo . ' fecha_albaran=' . $prototype->fecha . ' ultima_factura_fecha=' . ($ultimaFechaFactura ?? 'NULL'));
+
+            // If albaran is delayed (older than last invoice), use last invoice date
             if ($ultimaFechaFactura && $prototype->fecha < $ultimaFechaFactura) {
-                // Add 1 day to avoid same-date conflict
-                $fechaFactura = date('Y-m-d', strtotime($ultimaFechaFactura . ' +1 day'));
+                $fechaFactura = $ultimaFechaFactura;
 
                 Tools::log()->warning('delayed-albaran-invoiced-with-later-date', [
                     '%albaran%' => $prototype->codigo,
@@ -489,6 +490,8 @@ class Megafacturador extends Controller
                     '%customer%' => $prototype->nombrecliente
                 ]);
             }
+
+            Tools::log()->info('DEBUG FECHA: fecha_final_a_usar=' . $fechaFactura);
 
             $properties['fecha'] = $fechaFactura;
         }
