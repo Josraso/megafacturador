@@ -28,8 +28,9 @@ final class Init extends InitClass
 {
     public function init(): void
     {
-        // JavaScript files are automatically loaded when they match controller names
-        // ListFacturaCliente.js and ListFacturaProveedor.js load automatically
+        // Load controller extensions to force JS loading
+        $this->loadExtension(new Extension\Controller\ListFacturaCliente());
+        $this->loadExtension(new Extension\Controller\ListFacturaProveedor());
     }
 
     public function update(): void
