@@ -6,15 +6,32 @@ console.log('MEGAFAC: ListFacturaCliente.js LOADED');
 
 function megafacSendMassEmails() {
     console.log('MEGAFAC: megafacSendMassEmails called');
-    // Get all checked checkboxes
-    var checkboxes = document.querySelectorAll('input[name="code[]"]:checked');
 
-    if (checkboxes.length === 0) {
+    // Try different selectors to find checkboxes
+    var checkboxes = document.querySelectorAll('input[type="checkbox"]:checked');
+    console.log('MEGAFAC: Found checkboxes:', checkboxes.length);
+
+    // Log checkbox names to debug
+    checkboxes.forEach(function(cb) {
+        console.log('MEGAFAC: Checkbox name:', cb.name, 'value:', cb.value);
+    });
+
+    // Filter out the "select all" checkbox if exists
+    var selectedBoxes = [];
+    checkboxes.forEach(function(cb) {
+        if (cb.value && cb.value !== 'on') {
+            selectedBoxes.push(cb);
+        }
+    });
+
+    console.log('MEGAFAC: Selected boxes (filtered):', selectedBoxes.length);
+
+    if (selectedBoxes.length === 0) {
         alert('Por favor, selecciona al menos una factura');
         return;
     }
 
-    if (!confirm('¿Enviar emails a ' + checkboxes.length + ' facturas seleccionadas?')) {
+    if (!confirm('¿Enviar emails a ' + selectedBoxes.length + ' facturas seleccionadas?')) {
         return;
     }
 
@@ -45,7 +62,7 @@ function megafacSendMassEmails() {
     form.appendChild(returnInput);
 
     // Add selected codes
-    checkboxes.forEach(function(checkbox) {
+    selectedBoxes.forEach(function(checkbox) {
         var input = document.createElement('input');
         input.type = 'hidden';
         input.name = 'code[]';
