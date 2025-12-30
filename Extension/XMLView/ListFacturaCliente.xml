@@ -6,7 +6,7 @@
 <view>
     <rows>
         <row type="actions">
-            <button action="megafacSendMassEmails" color="primary" icon="fas fa-envelope" label="send-mass-emails" type="js"/>
+            <button action="megafacSendMassEmails()" color="primary" icon="fas fa-envelope" label="send-mass-emails" type="js"/>
         </row>
     </rows>
 </view>
