@@ -221,6 +221,7 @@ class Megafacturador extends Controller
         }
 
         if (!empty($this->opciones['megafac_hasta'])) {
+            Tools::log()->info('DEBUG FILTRO: megafac_hasta=' . $this->opciones['megafac_hasta']);
             $where[] = new DataBaseWhere('fecha', $this->opciones['megafac_hasta'], '<=');
         }
 
@@ -254,7 +255,11 @@ class Megafacturador extends Controller
 
         $className = 'FacturaScripts\\Dinamic\\Model\\' . $modelName;
         $model = new $className();
-        return $model->all($where, ['fecha' => 'ASC', 'hora' => 'ASC'], 0, 20);
+        $result = $model->all($where, ['fecha' => 'ASC', 'hora' => 'ASC'], 0, 20);
+
+        Tools::log()->info('DEBUG ALBARANES: model=' . $modelName . ' found=' . count($result) . ' cliente=' . ($codcliente ?: 'ALL') . ' serie=' . ($codserie ?: 'ALL'));
+
+        return $result;
     }
 
     /**
