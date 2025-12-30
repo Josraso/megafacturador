@@ -353,16 +353,10 @@ class Megafacturador extends Controller
                 } else {
                     // Create NEW generator for each invoice to avoid reusing same instance
                     $generator = new BusinessDocumentGenerator();
-                    $resultado = $this->facturarAlbaranCliente($generator, $albaranes, $fecha, $ultimaFechaCliente, $tmpFile);
-
-                    if ($resultado === true) {
+                    if ($this->facturarAlbaranCliente($generator, $albaranes, $fecha, $ultimaFechaCliente, $tmpFile)) {
                         $total1++;
                         $recargar = true;
-                    } elseif ($resultado === 'skip') {
-                        // Albaran skipped due to chronological issues, continue with next
-                        continue;
                     } else {
-                        // Critical error, stop
                         break;
                     }
                 }
@@ -391,16 +385,10 @@ class Megafacturador extends Controller
                 } else {
                     // Create NEW generator for each invoice to avoid reusing same instance
                     $generator = new BusinessDocumentGenerator();
-                    $resultado = $this->facturarAlbaranProveedor($generator, $albaranes, $fecha, $ultimaFechaProveedor, $tmpFile);
-
-                    if ($resultado === true) {
+                    if ($this->facturarAlbaranProveedor($generator, $albaranes, $fecha, $ultimaFechaProveedor, $tmpFile)) {
                         $total2++;
                         $recargar = true;
-                    } elseif ($resultado === 'skip') {
-                        // Albaran skipped due to chronological issues, continue with next
-                        continue;
                     } else {
-                        // Critical error, stop
                         break;
                     }
                 }
@@ -446,9 +434,9 @@ class Megafacturador extends Controller
      * @param string|null $ultimaFechaFactura
      * @param string $tmpFile
      *
-     * @return bool|string Returns true on success, false on critical error, 'skip' to skip this albaran
+     * @return bool
      */
-    private function facturarAlbaranCliente($generator, array $albaranes, ?string $fecha, ?string $ultimaFechaFactura, string $tmpFile)
+    private function facturarAlbaranCliente($generator, array $albaranes, ?string $fecha, ?string $ultimaFechaFactura, string $tmpFile): bool
     {
         if (empty($albaranes)) {
             return false;
@@ -503,20 +491,21 @@ class Megafacturador extends Controller
                     }
                 }
 
-                // If no valid date found, skip this albaran
+                // If no valid date found in pending albaranes, use fallback
                 if (!$fechaEncontrada) {
                     if (!empty($this->opciones['megafac_hasta']) && $this->opciones['megafac_hasta'] >= $ultimaFechaFactura) {
                         $fechaFactura = $this->opciones['megafac_hasta'];
                     } else {
-                        // Cannot invoice this delayed albaran - skip it
-                        Tools::log()->warning('skipping-delayed-albaran', [
-                            '%albaran%' => $prototype->codigo,
-                            '%albaran-date%' => $prototype->fecha,
-                            '%last-invoice-date%' => $ultimaFechaFactura,
-                            '%customer%' => $prototype->nombrecliente
-                        ]);
-                        return 'skip';
+                        // Use last invoice date as minimum to avoid chronological errors
+                        $fechaFactura = $ultimaFechaFactura;
                     }
+
+                    Tools::log()->warning('delayed-albaran-invoiced-with-later-date', [
+                        '%albaran%' => $prototype->codigo,
+                        '%albaran-date%' => $prototype->fecha,
+                        '%invoice-date%' => $fechaFactura,
+                        '%customer%' => $prototype->nombrecliente
+                    ]);
                 }
             }
 
@@ -598,9 +587,9 @@ class Megafacturador extends Controller
      * @param string|null $ultimaFechaFactura
      * @param string $tmpFile
      *
-     * @return bool|string Returns true on success, false on critical error, 'skip' to skip this albaran
+     * @return bool
      */
-    private function facturarAlbaranProveedor($generator, array $albaranes, ?string $fecha, ?string $ultimaFechaFactura, string $tmpFile)
+    private function facturarAlbaranProveedor($generator, array $albaranes, ?string $fecha, ?string $ultimaFechaFactura, string $tmpFile): bool
     {
         if (empty($albaranes)) {
             return false;
@@ -655,20 +644,21 @@ class Megafacturador extends Controller
                     }
                 }
 
-                // If no valid date found, skip this albaran
+                // If no valid date found in pending albaranes, use fallback
                 if (!$fechaEncontrada) {
                     if (!empty($this->opciones['megafac_hasta']) && $this->opciones['megafac_hasta'] >= $ultimaFechaFactura) {
                         $fechaFactura = $this->opciones['megafac_hasta'];
                     } else {
-                        // Cannot invoice this delayed albaran - skip it
-                        Tools::log()->warning('skipping-delayed-albaran', [
-                            '%albaran%' => $prototype->codigo,
-                            '%albaran-date%' => $prototype->fecha,
-                            '%last-invoice-date%' => $ultimaFechaFactura,
-                            '%supplier%' => $prototype->nombre
-                        ]);
-                        return 'skip';
+                        // Use last invoice date as minimum to avoid chronological errors
+                        $fechaFactura = $ultimaFechaFactura;
                     }
+
+                    Tools::log()->warning('delayed-albaran-invoiced-with-later-date', [
+                        '%albaran%' => $prototype->codigo,
+                        '%albaran-date%' => $prototype->fecha,
+                        '%invoice-date%' => $fechaFactura,
+                        '%supplier%' => $prototype->nombre
+                    ]);
                 }
             }
 
