@@ -58,14 +58,41 @@
 
         // Add button to toolbar when page loads
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('MEGAFAC DEBUG: DOMContentLoaded fired');
+
+            // Try multiple selectors
             var toolbar = document.querySelector('.btn-toolbar');
+            console.log('MEGAFAC DEBUG: .btn-toolbar =', toolbar);
+
+            if (!toolbar) {
+                toolbar = document.querySelector('.page-header .btn-group');
+                console.log('MEGAFAC DEBUG: .page-header .btn-group =', toolbar);
+            }
+
+            if (!toolbar) {
+                toolbar = document.querySelector('.card-header .btn-group');
+                console.log('MEGAFAC DEBUG: .card-header .btn-group =', toolbar);
+            }
+
+            if (!toolbar) {
+                toolbar = document.querySelector('.container-fluid .btn-group');
+                console.log('MEGAFAC DEBUG: .container-fluid .btn-group =', toolbar);
+            }
+
             if (toolbar) {
+                console.log('MEGAFAC DEBUG: Found toolbar, adding button');
                 var btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'btn btn-primary';
                 btn.onclick = megafacSendMassEmails;
                 btn.innerHTML = '<i class="fas fa-envelope fa-fw"></i> <span class="d-none d-lg-inline-block">Enviar emails masivos</span>';
                 toolbar.appendChild(btn);
+                console.log('MEGAFAC DEBUG: Button added successfully');
+            } else {
+                console.error('MEGAFAC DEBUG: No toolbar found!');
+                // Show all elements with btn-group class
+                var allBtnGroups = document.querySelectorAll('.btn-group');
+                console.log('MEGAFAC DEBUG: All .btn-group elements:', allBtnGroups);
             }
         });
     </script>
