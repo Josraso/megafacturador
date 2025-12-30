@@ -21,7 +21,6 @@ namespace FacturaScripts\Plugins\Megafacturador\Controller;
 
 use FacturaScripts\Core\Base\Controller;
 use FacturaScripts\Core\Base\DataBase\DataBaseWhere;
-use FacturaScripts\Core\Base\ExportManager;
 use FacturaScripts\Core\Lib\Email\NewMail;
 use FacturaScripts\Core\Tools;
 use FacturaScripts\Dinamic\Lib\Accounting\AccountingAccounts;
@@ -844,34 +843,20 @@ class Megafacturador extends Controller
             $empresa->loadFromCode($factura->idempresa);
             $empresaNombre = $empresa->nombrecorto ?? 'Su empresa';
 
-            // Generate PDF
-            $pdfPath = null;
-            try {
-                $exportManager = new ExportManager();
-                $exportManager->newDoc('PDF', $factura->modelClassName());
-                $exportManager->addModelPage($factura->modelClassName(), $factura->codigo, [], $factura->codigo);
-                $pdfPath = $exportManager->getDoc();
-            } catch (\Exception $e) {
-                Tools::log()->error('pdf-generation-error', ['%error%' => $e->getMessage()]);
-                $errores++;
-                continue;
-            }
+            // Get PDF download link
+            $pdfUrl = $this->url() . '?page=EditFacturaCliente&action=export&code=' . $factura->codigo . '&option=PDF';
 
             // Send email using NewMail
             try {
+                $bodyHtml = '<p>Estimado/a <strong>' . $factura->nombrecliente . '</strong>,</p>' .
+                           '<p>Le informamos que su factura <strong>' . $factura->codigo . '</strong> está disponible.</p>' .
+                           '<p><a href="' . $pdfUrl . '" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Descargar Factura PDF</a></p>' .
+                           '<p>Atentamente,<br>' . $empresaNombre . '</p>';
+
                 $mail = NewMail::create()
                     ->to($factura->email, $factura->nombrecliente)
                     ->subject($empresaNombre . ' - Factura ' . $factura->codigo)
-                    ->body(
-                        '<p>Estimado/a <strong>' . $factura->nombrecliente . '</strong>,</p>' .
-                        '<p>Adjuntamos la factura <strong>' . $factura->codigo . '</strong>.</p>' .
-                        '<p>Atentamente,<br>' . $empresaNombre . '</p>'
-                    );
-
-                // Attach PDF if generated
-                if ($pdfPath && file_exists($pdfPath)) {
-                    $mail->addAttachment($pdfPath, $factura->codigo . '.pdf');
-                }
+                    ->body($bodyHtml);
 
                 // Send
                 if ($mail->send()) {
@@ -884,11 +869,6 @@ class Megafacturador extends Controller
             } catch (\Exception $e) {
                 $errores++;
                 Tools::log()->error('invoice-email-error', ['%invoice%' => $factura->codigo, '%error%' => $e->getMessage()]);
-            }
-
-            // Clean up PDF file
-            if ($pdfPath && file_exists($pdfPath)) {
-                @unlink($pdfPath);
             }
         }
 
