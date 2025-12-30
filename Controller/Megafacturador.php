@@ -474,21 +474,32 @@ class Megafacturador extends Controller
             // Use custom date (today)
             $properties['fecha'] = $fecha;
         } else {
-            // CRITICAL: Check if albaran is older than last invoice
+            // CRITICAL: Check if albaran is older than last invoice (SAME YEAR only)
             $fechaFactura = $prototype->fecha;
 
             Tools::log()->info('DEBUG FECHA: albaran=' . $prototype->codigo . ' fecha_albaran=' . $prototype->fecha . ' ultima_factura_fecha=' . ($ultimaFechaFactura ?? 'NULL'));
 
-            // If albaran is delayed (older than last invoice), use last invoice date
+            // If albaran is delayed (older than last invoice) AND same year, use last invoice date
             if ($ultimaFechaFactura && $prototype->fecha < $ultimaFechaFactura) {
-                $fechaFactura = $ultimaFechaFactura;
+                // Extract years
+                $yearAlbaran = substr($prototype->fecha, 0, 4);
+                $yearUltimaFactura = substr($ultimaFechaFactura, 0, 4);
 
-                Tools::log()->warning('delayed-albaran-invoiced-with-later-date', [
-                    '%albaran%' => $prototype->codigo,
-                    '%albaran-date%' => $prototype->fecha,
-                    '%invoice-date%' => $fechaFactura,
-                    '%customer%' => $prototype->nombrecliente
-                ]);
+                Tools::log()->info('DEBUG FECHA: año_albaran=' . $yearAlbaran . ' año_ultima_factura=' . $yearUltimaFactura);
+
+                // Only adjust date if SAME YEAR
+                if ($yearAlbaran === $yearUltimaFactura) {
+                    $fechaFactura = $ultimaFechaFactura;
+
+                    Tools::log()->warning('delayed-albaran-invoiced-with-later-date', [
+                        '%albaran%' => $prototype->codigo,
+                        '%albaran-date%' => $prototype->fecha,
+                        '%invoice-date%' => $fechaFactura,
+                        '%customer%' => $prototype->nombrecliente
+                    ]);
+                } else {
+                    Tools::log()->info('DEBUG FECHA: años diferentes, usar fecha albaran original');
+                }
             }
 
             Tools::log()->info('DEBUG FECHA: fecha_final_a_usar=' . $fechaFactura);
@@ -611,20 +622,26 @@ class Megafacturador extends Controller
             // Use custom date (today)
             $properties['fecha'] = $fecha;
         } else {
-            // CRITICAL: Check if albaran is older than last invoice
+            // CRITICAL: Check if albaran is older than last invoice (SAME YEAR only)
             $fechaFactura = $prototype->fecha;
 
-            // If albaran is delayed (older than last invoice), use last invoice date + 1 day
+            // If albaran is delayed (older than last invoice) AND same year, use last invoice date
             if ($ultimaFechaFactura && $prototype->fecha < $ultimaFechaFactura) {
-                // Add 1 day to avoid same-date conflict
-                $fechaFactura = date('Y-m-d', strtotime($ultimaFechaFactura . ' +1 day'));
+                // Extract years
+                $yearAlbaran = substr($prototype->fecha, 0, 4);
+                $yearUltimaFactura = substr($ultimaFechaFactura, 0, 4);
 
-                Tools::log()->warning('delayed-albaran-invoiced-with-later-date', [
-                    '%albaran%' => $prototype->codigo,
-                    '%albaran-date%' => $prototype->fecha,
-                    '%invoice-date%' => $fechaFactura,
-                    '%supplier%' => $prototype->nombre
-                ]);
+                // Only adjust date if SAME YEAR
+                if ($yearAlbaran === $yearUltimaFactura) {
+                    $fechaFactura = $ultimaFechaFactura;
+
+                    Tools::log()->warning('delayed-albaran-invoiced-with-later-date', [
+                        '%albaran%' => $prototype->codigo,
+                        '%albaran-date%' => $prototype->fecha,
+                        '%invoice-date%' => $fechaFactura,
+                        '%supplier%' => $prototype->nombre
+                    ]);
+                }
             }
 
             $properties['fecha'] = $fechaFactura;
