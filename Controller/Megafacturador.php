@@ -819,6 +819,17 @@ class Megafacturador extends Controller
         $errores = 0;
 
         foreach ($facturas as $factura) {
+            Tools::log()->info('DEBUG SEND: Processing invoice ' . $factura->codigo . ' | email field: "' . $factura->email . '"');
+
+            // Get customer to get email if not in invoice
+            if (empty($factura->email)) {
+                $cliente = new Cliente();
+                if ($cliente->loadFromCode($factura->codcliente)) {
+                    $factura->email = $cliente->email;
+                    Tools::log()->info('DEBUG SEND: Got email from customer: "' . $factura->email . '"');
+                }
+            }
+
             // Get customer email
             if (empty($factura->email)) {
                 Tools::log()->warning('invoice-without-email', ['%invoice%' => $factura->codigo]);
