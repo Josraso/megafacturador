@@ -84,6 +84,16 @@ class Megafacturador extends Controller
     public $url_recarga;
 
     /**
+     * @var string
+     */
+    public $url_enviar_emails;
+
+    /**
+     * @var int
+     */
+    public $facturas_generadas;
+
+    /**
      * Returns basic page attributes
      *
      * @return array
@@ -115,10 +125,14 @@ class Megafacturador extends Controller
         $this->numasientos = 0;
         $this->serie = new Serie();
         $this->url_recarga = false;
+        $this->url_enviar_emails = false;
+        $this->facturas_generadas = 0;
         $this->loadConfig();
 
         if ($this->request->request->get('megafac_fecha')) {
             $this->modificarConfig();
+        } elseif ($this->request->query->get('enviar_emails') === 'TRUE') {
+            $this->enviarEmailsFacturas();
         } elseif ($this->request->query->get('procesar') === 'TRUE') {
             $this->generarFacturas();
         } elseif ($this->request->query->get('genasientos')) {
@@ -399,13 +413,19 @@ class Megafacturador extends Controller
             Tools::log()->notice('Reloading...');
         } else {
             Tools::log()->notice('Finished.');
-            if ($this->opciones['megafac_email']) {
-                // Redirect to email sending page
-                Tools::log()->info('DEBUG: Redirecting to email page with runid: ' . $runId);
-                $this->response->headers->set('Refresh', '0; url=index.php?page=MegafacturadorEmail&runid=' . $runId);
-            } else {
-                // Clean up temp file if not sending emails
-                if (file_exists($tmpFile)) {
+
+            // Count generated invoices
+            if (file_exists($tmpFile)) {
+                $fileContent = file_get_contents($tmpFile);
+                $facturasIds = array_filter(explode("\n", trim($fileContent)));
+                $this->facturas_generadas = count($facturasIds);
+
+                if ($this->opciones['megafac_email'] && $this->facturas_generadas > 0) {
+                    // Show button to send emails
+                    $this->url_enviar_emails = $this->url() . '?enviar_emails=TRUE&runid=' . $runId;
+                    Tools::log()->notice('Click the button below to send ' . $this->facturas_generadas . ' emails.');
+                } else {
+                    // Clean up temp file if not sending emails
                     @unlink($tmpFile);
                 }
             }
@@ -760,5 +780,104 @@ class Megafacturador extends Controller
         $num += $facturaProveedor->count($where);
 
         return $num;
+    }
+
+    /**
+     * Send emails for generated invoices
+     */
+    private function enviarEmailsFacturas(): void
+    {
+        $runId = $this->request->get('runid', '');
+        $tmpFile = sys_get_temp_dir() . '/megafac_' . $runId . '.txt';
+
+        if (!file_exists($tmpFile)) {
+            Tools::log()->error('no-temp-file-found');
+            return;
+        }
+
+        // Read invoice IDs from temp file
+        $fileContent = file_get_contents($tmpFile);
+        $facturasIds = array_filter(explode("\n", trim($fileContent)));
+
+        if (empty($facturasIds)) {
+            Tools::log()->warning('no-invoices-to-send');
+            @unlink($tmpFile);
+            return;
+        }
+
+        // Load invoices by their IDs
+        $facturaModel = new FacturaCliente();
+        $facturas = [];
+        foreach ($facturasIds as $id) {
+            $factura = $facturaModel->get($id);
+            if ($factura) {
+                $facturas[] = $factura;
+            }
+        }
+
+        $enviados = 0;
+        $errores = 0;
+
+        foreach ($facturas as $factura) {
+            // Get customer email
+            if (empty($factura->email)) {
+                Tools::log()->warning('invoice-without-email', ['%invoice%' => $factura->codigo]);
+                $errores++;
+                continue;
+            }
+
+            // Send email with invoice PDF attached
+            $emailTools = new \FacturaScripts\Dinamic\Lib\Email\EmailTools();
+            $mail = $emailTools->newMail();
+            $mail->addAddress($factura->email, $factura->nombrecliente);
+
+            // Subject
+            $empresa = new Empresa();
+            if ($empresa->loadFromCode($factura->idempresa)) {
+                $mail->Subject = $empresa->nombrecorto . ' - Factura ' . $factura->codigo;
+            } else {
+                $mail->Subject = 'Factura ' . $factura->codigo;
+            }
+
+            // Body
+            $mail->msgHTML(
+                '<p>Estimado/a <strong>' . $factura->nombrecliente . '</strong>,</p>' .
+                '<p>Adjuntamos la factura <strong>' . $factura->codigo . '</strong>.</p>' .
+                '<p>Atentamente,<br>' . ($empresa->nombrecorto ?? 'Su empresa') . '</p>'
+            );
+
+            // Attach PDF using export manager
+            try {
+                $exportManager = new \FacturaScripts\Core\Base\ExportManager();
+                $exportManager->newDoc('PDF', $factura->modelClassName());
+                $exportManager->addModelPage($factura->modelClassName(), $factura->codigo, [], $factura->codigo);
+
+                $pdfPath = $exportManager->getDoc();
+                if ($pdfPath && file_exists($pdfPath)) {
+                    $mail->addAttachment($pdfPath, $factura->codigo . '.pdf');
+                }
+            } catch (\Exception $e) {
+                Tools::log()->error('pdf-generation-error', ['%error%' => $e->getMessage()]);
+            }
+
+            // Send
+            if ($mail->send()) {
+                $enviados++;
+                Tools::log()->info('invoice-email-sent', ['%invoice%' => $factura->codigo, '%email%' => $factura->email]);
+            } else {
+                $errores++;
+                Tools::log()->error('invoice-email-error', ['%invoice%' => $factura->codigo, '%error%' => $mail->ErrorInfo]);
+            }
+
+            // Clean up PDF file
+            if (isset($pdfPath) && file_exists($pdfPath)) {
+                @unlink($pdfPath);
+            }
+        }
+
+        Tools::log()->notice($enviados . ' emails sent, ' . $errores . ' errors.');
+
+        // Clean up temp file after sending
+        @unlink($tmpFile);
     }
 }

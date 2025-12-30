@@ -160,6 +160,27 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
                 </div>
             </div>
         </form>
+
+        {% if fsc.url_enviar_emails %}
+            <div class="row">
+                <div class="col-sm-12">
+                    <div class="alert alert-success alert-dismissible">
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        <h4 class="alert-heading">
+                            <i class="fas fa-check-circle"></i> ¡Facturas generadas!
+                        </h4>
+                        <p>Se han generado <strong>{{ fsc.facturas_generadas }}</strong> facturas correctamente.</p>
+                        <hr>
+                        <div class="text-center">
+                            <a href="{{ fsc.url_enviar_emails | raw }}" class="btn btn-primary btn-lg">
+                                <i class="fas fa-paper-plane"></i> Enviar {{ fsc.facturas_generadas }} emails ahora
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        {% endif %}
+
         <div class="row">
             <div class="col-sm-12">
                 <h2 class="mt-4">
