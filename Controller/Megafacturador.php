@@ -276,20 +276,29 @@ class Megafacturador extends Controller
      * Get the date of the last invoice to maintain chronological order
      *
      * @param string $modelName
+     * @param string|null $codserie Filter by serie code
      * @return string|null
      */
-    private function getUltimaFechaFactura(string $modelName): ?string
+    private function getUltimaFechaFactura(string $modelName, ?string $codserie = null): ?string
     {
         $className = 'FacturaScripts\\Dinamic\\Model\\' . $modelName;
         $model = new $className();
 
-        // Get last invoice ordered by date DESC
-        $facturas = $model->all([], ['fecha' => 'DESC'], 0, 1);
-
-        if (!empty($facturas)) {
-            return $facturas[0]->fecha;
+        // Get last invoice ordered by date DESC, filtered by serie if provided
+        $where = [];
+        if ($codserie !== null) {
+            $where[] = new DataBaseWhere('codserie', $codserie);
         }
 
+        $facturas = $model->all($where, ['fecha' => 'DESC'], 0, 1);
+
+        if (!empty($facturas)) {
+            $fecha = $facturas[0]->fecha;
+            Tools::log()->info('DEBUG getUltimaFechaFactura: model=' . $modelName . ' serie=' . ($codserie ?? 'ALL') . ' fecha=' . $fecha);
+            return $fecha;
+        }
+
+        Tools::log()->info('DEBUG getUltimaFechaFactura: model=' . $modelName . ' serie=' . ($codserie ?? 'ALL') . ' NO FOUND');
         return null;
     }
 
@@ -327,10 +336,6 @@ class Megafacturador extends Controller
         }
         // If 'albaran', $fecha stays null and will use delivery note's date
 
-        // Get last invoice dates to avoid chronological issues
-        $ultimaFechaCliente = $this->getUltimaFechaFactura('FacturaCliente');
-        $ultimaFechaProveedor = $this->getUltimaFechaFactura('FacturaProveedor');
-
         if ($this->opciones['megafac_ventas']) {
             $total1 = 0;
 
@@ -351,6 +356,9 @@ class Megafacturador extends Controller
                 if (empty($albaranes)) {
                     // Already invoiced when grouping, skip
                 } else {
+                    // Get last invoice date for THIS SERIE
+                    $ultimaFechaCliente = $this->getUltimaFechaFactura('FacturaCliente', $alb->codserie);
+
                     // Create NEW generator for each invoice to avoid reusing same instance
                     $generator = new BusinessDocumentGenerator();
                     if ($this->facturarAlbaranCliente($generator, $albaranes, $fecha, $ultimaFechaCliente, $tmpFile)) {
@@ -383,6 +391,9 @@ class Megafacturador extends Controller
                 if (empty($albaranes)) {
                     // Already invoiced when grouping, skip
                 } else {
+                    // Get last invoice date for THIS SERIE
+                    $ultimaFechaProveedor = $this->getUltimaFechaFactura('FacturaProveedor', $alb->codserie);
+
                     // Create NEW generator for each invoice to avoid reusing same instance
                     $generator = new BusinessDocumentGenerator();
                     if ($this->facturarAlbaranProveedor($generator, $albaranes, $fecha, $ultimaFechaProveedor, $tmpFile)) {
@@ -477,7 +488,7 @@ class Megafacturador extends Controller
             // CRITICAL: Check if albaran is older than last invoice (SAME YEAR only)
             $fechaFactura = $prototype->fecha;
 
-            Tools::log()->info('DEBUG FECHA: albaran=' . $prototype->codigo . ' fecha_albaran=' . $prototype->fecha . ' ultima_factura_fecha=' . ($ultimaFechaFactura ?? 'NULL'));
+            Tools::log()->info('DEBUG FECHA: albaran=' . $prototype->codigo . ' serie=' . $prototype->codserie . ' fecha_albaran=' . $prototype->fecha . ' ultima_factura_fecha=' . ($ultimaFechaFactura ?? 'NULL'));
 
             // If albaran is delayed (older than last invoice) AND same year, use last invoice date
             if ($ultimaFechaFactura) {
