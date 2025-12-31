@@ -22,8 +22,14 @@ class ListFacturaProveedor
     public function execAfterAction(): Closure
     {
         return function($action) {
-            if ($action === 'megafac-send-emails-proveedor') {
+            $requestAction = $this->request->request->get('action', '');
+
+            Tools::log()->notice('MEGAFAC DEBUG execAfterAction PROVEEDOR: action=' . $action . ', requestAction=' . $requestAction);
+
+            if ($requestAction === 'megafac-send-emails-proveedor') {
                 $codes = $this->request->request->get('codes', []);
+
+                Tools::log()->notice('MEGAFAC DEBUG: Detectada acción megafac-send-emails-proveedor con ' . count($codes) . ' códigos');
 
                 if (empty($codes)) {
                     Tools::log()->warning('No se seleccionaron facturas');
