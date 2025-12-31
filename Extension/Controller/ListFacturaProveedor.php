@@ -26,12 +26,7 @@ class ListFacturaProveedor
             $requestAction = $_POST['action'] ?? '';
             $codes = $_POST['codes'] ?? [];
 
-            Tools::log()->notice('MEGAFAC DEBUG execAfterAction PROVEEDOR: action=' . $action . ', requestAction=' . $requestAction . ', codes=' . count($codes));
-
             if ($requestAction === 'megafac-send-emails-proveedor') {
-
-                Tools::log()->notice('MEGAFAC DEBUG: Detectada acción megafac-send-emails-proveedor con ' . count($codes) . ' códigos');
-
                 if (empty($codes)) {
                     Tools::log()->warning('No se seleccionaron facturas');
                     return;
@@ -114,7 +109,14 @@ class ListFacturaProveedor
                     }
                 }
 
-                Tools::log()->notice($enviados . ' emails sent, ' . $errores . ' errors.');
+                // Show summary message like in Megafacturador
+                if ($enviados > 0 && $errores === 0) {
+                    Tools::log()->notice($enviados . ' emails sent successfully.');
+                } elseif ($enviados > 0 && $errores > 0) {
+                    Tools::log()->warning($enviados . ' emails sent, ' . $errores . ' errors.');
+                } else {
+                    Tools::log()->error('No emails were sent. ' . $errores . ' errors.');
+                }
             }
         };
     }
