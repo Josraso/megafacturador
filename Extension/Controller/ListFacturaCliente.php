@@ -22,12 +22,13 @@ class ListFacturaCliente
     public function execAfterAction(): Closure
     {
         return function($action) {
-            $requestAction = $this->request->request->get('action', '');
+            // Read directly from $_POST as FS may clean the request
+            $requestAction = $_POST['action'] ?? '';
+            $codes = $_POST['codes'] ?? [];
 
-            Tools::log()->notice('MEGAFAC DEBUG execAfterAction: action=' . $action . ', requestAction=' . $requestAction);
+            Tools::log()->notice('MEGAFAC DEBUG execAfterAction: action=' . $action . ', requestAction=' . $requestAction . ', codes=' . count($codes));
 
             if ($requestAction === 'megafac-send-emails') {
-                $codes = $this->request->request->get('codes', []);
 
                 Tools::log()->notice('MEGAFAC DEBUG: Detectada acción megafac-send-emails con ' . count($codes) . ' códigos');
 
