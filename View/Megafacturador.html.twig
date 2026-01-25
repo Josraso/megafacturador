@@ -153,6 +153,15 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
                                     Agrupar albaranes por cliente o proveedor
                                 </label>
                             </div>
+                            <div class="form-check mt-2">
+                                <input type="checkbox" name="megafac_emitir" value="TRUE"
+                                       class="form-check-input" id="megafac_emitir"
+                                       {% if fsc.opciones.megafac_emitir %}checked{% endif %}>
+                                <label class="form-check-label" for="megafac_emitir">
+                                    <i class="fas fa-check-circle" aria-hidden="true"></i>
+                                    Emitir facturas (no bocetos)
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -143,6 +143,7 @@ class Megafacturador extends Controller
             'megafac_codserie' => Tools::settings('megafacturador', 'megafac_codserie', ''),
             'megafac_compras' => Tools::settings('megafacturador', 'megafac_compras', 1),
             'megafac_email' => Tools::settings('megafacturador', 'megafac_email', false),
+            'megafac_emitir' => Tools::settings('megafacturador', 'megafac_emitir', false),
             'megafac_fecha' => Tools::settings('megafacturador', 'megafac_fecha', 'albaran'),
             'megafac_hasta' => Tools::settings('megafacturador', 'megafac_hasta', date('Y-m-d')),
             'megafac_ventas' => Tools::settings('megafacturador', 'megafac_ventas', 1),
@@ -161,6 +162,7 @@ class Megafacturador extends Controller
         $this->opciones['megafac_codserie'] = $this->request->request->get('megafac_codserie');
         $this->opciones['megafac_compras'] = $this->request->request->get('megafac_compras') ? 1 : 0;
         $this->opciones['megafac_email'] = $this->request->request->get('megafac_email') ? 1 : 0;
+        $this->opciones['megafac_emitir'] = $this->request->request->get('megafac_emitir') ? 1 : 0;
         $this->opciones['megafac_fecha'] = $this->request->request->get('megafac_fecha');
         $this->opciones['megafac_hasta'] = $this->request->request->get('megafac_hasta');
         $this->opciones['megafac_ventas'] = $this->request->request->get('megafac_ventas') ? 1 : 0;
@@ -499,6 +501,28 @@ class Megafacturador extends Controller
             $factura = $facturas[0];
             $facturaId = $factura->primaryColumnValue();
             file_put_contents($tmpFile, $facturaId . "\n", FILE_APPEND);
+
+            // Mark invoice as issued (not draft) if option is enabled
+            if ($this->opciones['megafac_emitir']) {
+                $factura->setDocumentGeneration(false);
+
+                // Find non-editable status for FacturaCliente
+                $estadoModel = new EstadoDocumento();
+                $whereEstado = [
+                    new DataBaseWhere('tipodoc', 'FacturaCliente'),
+                    new DataBaseWhere('editable', false)
+                ];
+                $estados = $estadoModel->all($whereEstado, [], 0, 1);
+
+                if (!empty($estados)) {
+                    $factura->idestado = $estados[0]->idestado;
+                }
+
+                $factura->editable = false;
+                if (!$factura->save()) {
+                    Tools::log()->warning('failed-to-mark-invoice-as-issued');
+                }
+            }
         }
 
         // CRITICAL: Mark lines as served and check if albaran is fully invoiced
@@ -631,6 +655,28 @@ class Megafacturador extends Controller
             $factura = $facturas[0];
             $facturaId = $factura->primaryColumnValue();
             file_put_contents($tmpFile, $facturaId . "\n", FILE_APPEND);
+
+            // Mark invoice as issued (not draft) if option is enabled
+            if ($this->opciones['megafac_emitir']) {
+                $factura->setDocumentGeneration(false);
+
+                // Find non-editable status for FacturaProveedor
+                $estadoModel = new EstadoDocumento();
+                $whereEstado = [
+                    new DataBaseWhere('tipodoc', 'FacturaProveedor'),
+                    new DataBaseWhere('editable', false)
+                ];
+                $estados = $estadoModel->all($whereEstado, [], 0, 1);
+
+                if (!empty($estados)) {
+                    $factura->idestado = $estados[0]->idestado;
+                }
+
+                $factura->editable = false;
+                if (!$factura->save()) {
+                    Tools::log()->warning('failed-to-mark-invoice-as-issued');
+                }
+            }
         }
 
         // CRITICAL: Mark lines as served and check if albaran is fully invoiced
