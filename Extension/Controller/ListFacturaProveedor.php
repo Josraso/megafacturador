@@ -1,123 +1,69 @@
 <?php
+/**
+ * This file is part of megafacturador
+ * Copyright (C) 2014-2025 Carlos Garcia Gomez <neorazorx@gmail.com>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as
+ * published by the Free Software Foundation, either version 3 of the
+ * License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 namespace FacturaScripts\Plugins\Megafacturador\Extension\Controller;
 
 use Closure;
 use FacturaScripts\Core\Tools;
-use FacturaScripts\Core\Lib\Email\NewMail;
-use FacturaScripts\Dinamic\Lib\ExportManager;
-use FacturaScripts\Dinamic\Model\FacturaProveedor as FacturaProveedorModel;
-use FacturaScripts\Dinamic\Model\Proveedor;
-use FacturaScripts\Dinamic\Model\Empresa;
+use FacturaScripts\Dinamic\Lib\AssetManager;
+use FacturaScripts\Plugins\Megafacturador\Lib\MegafacturadorMailer;
 
+/**
+ * Adds the "send by email" button to the FacturaProveedor list.
+ */
 class ListFacturaProveedor
 {
     public function createViews(): Closure
     {
-        return function() {
-            // Force load JavaScript
-            \FacturaScripts\Dinamic\Lib\AssetManager::addJs(FS_ROUTE . '/Plugins/Megafacturador/Assets/JS/ListFacturaProveedor.js');
+        return function () {
+            AssetManager::addJs(FS_ROUTE . '/Plugins/Megafacturador/Assets/JS/ListFacturaProveedor.js');
         };
     }
 
     public function execAfterAction(): Closure
     {
-        return function($action) {
-            // Read directly from $_POST as FS may clean the request
-            $requestAction = $_POST['action'] ?? '';
-            $codes = $_POST['codes'] ?? [];
-
-            if ($requestAction === 'megafac-send-emails-proveedor') {
-                if (empty($codes)) {
-                    Tools::log()->warning('No se seleccionaron facturas');
-                    return;
-                }
-
-                $enviados = 0;
-                $errores = 0;
-
-                foreach ($codes as $code) {
-                    $factura = new FacturaProveedorModel();
-                    if (!$factura->loadFromCode($code)) {
-                        $errores++;
-                        continue;
-                    }
-
-                    // Get supplier email if not in invoice
-                    if (empty($factura->email)) {
-                        $proveedor = new Proveedor();
-                        if ($proveedor->loadFromCode($factura->codproveedor)) {
-                            $factura->email = $proveedor->email;
-                        }
-                    }
-
-                    // Skip if no email
-                    if (empty($factura->email)) {
-                        Tools::log()->warning('invoice-without-email', ['%invoice%' => $factura->codigo]);
-                        $errores++;
-                        continue;
-                    }
-
-                    // Get company info
-                    $empresa = new Empresa();
-                    $empresa->loadFromCode($factura->idempresa);
-                    $empresaNombre = $empresa->nombrecorto ?? 'Su empresa';
-
-                    // Generate PDF and send email (EXACTLY as in Megafacturador)
-                    try {
-                        $export = new ExportManager();
-                        $export->newDoc('PDF');
-                        $export->addBusinessDocPage($factura);
-                        $pdfContent = $export->getDoc();
-
-                        // Save to temporary file
-                        $pdfFileName = 'factura_' . $factura->codigo . '.pdf';
-                        $pdfPath = sys_get_temp_dir() . '/' . $pdfFileName;
-                        file_put_contents($pdfPath, $pdfContent);
-
-                        // Prepare email body
-                        $bodyHtml = '<p>Estimado/a <strong>' . $factura->nombre . '</strong>,</p>' .
-                                   '<p>Le informamos que adjuntamos la factura <strong>' . $factura->codigo . '</strong> en formato PDF.</p>' .
-                                   '<p>Atentamente,<br>' . $empresaNombre . '</p>';
-
-                        // Create and send email with PDF attachment
-                        $mail = NewMail::create()
-                            ->to($factura->email, $factura->nombre)
-                            ->subject($empresaNombre . ' - Factura ' . $factura->codigo)
-                            ->body($bodyHtml)
-                            ->addAttachment($pdfPath, $pdfFileName);
-
-                        // Send
-                        if ($mail->send()) {
-                            $enviados++;
-                            Tools::log()->info('invoice-email-sent', ['%invoice%' => $factura->codigo, '%email%' => $factura->email]);
-
-                            // Mark invoice as sent
-                            $factura->femail = date('d-m-Y');
-                            $factura->horamail = date('H:i:s');
-                            $factura->save();
-                        } else {
-                            $errores++;
-                            Tools::log()->error('invoice-email-failed', ['%invoice%' => $factura->codigo]);
-                        }
-
-                        // Clean up temporary PDF file
-                        @unlink($pdfPath);
-
-                    } catch (\Exception $e) {
-                        $errores++;
-                        Tools::log()->error('invoice-email-error', ['%invoice%' => $factura->codigo, '%error%' => $e->getMessage()]);
-                    }
-                }
-
-                // Show summary message like in Megafacturador
-                if ($enviados > 0 && $errores === 0) {
-                    Tools::log()->notice($enviados . ' emails sent successfully.');
-                } elseif ($enviados > 0 && $errores > 0) {
-                    Tools::log()->warning($enviados . ' emails sent, ' . $errores . ' errors.');
-                } else {
-                    Tools::log()->error('No emails were sent. ' . $errores . ' errors.');
-                }
+        return function ($action) {
+            // Read directly from $_POST: on this installation the request object does not see these fields
+            if (($_POST['action'] ?? '') !== 'megafac-send-emails-proveedor') {
+                return;
             }
+
+            if (false === MegafacturadorMailer::isSameOriginRequest()) {
+                Tools::log()->warning('Petición no válida.');
+                return;
+            }
+
+            if (isset($this->permissions) && empty($this->permissions->allowUpdate)) {
+                Tools::log()->warning('No tienes permiso para enviar facturas por email.');
+                return;
+            }
+
+            $codes = $_POST['codes'] ?? [];
+            if (!is_array($codes)) {
+                $codes = [$codes];
+            }
+            if (empty($codes)) {
+                Tools::log()->warning('No se seleccionaron facturas.');
+                return;
+            }
+
+            MegafacturadorMailer::sendMany('FacturaProveedor', $codes);
         };
     }
 }

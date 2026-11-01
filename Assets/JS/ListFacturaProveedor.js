@@ -1,48 +1,48 @@
 /**
- * ListFacturaProveedor - Mass email sending functionality
+ * Megafacturador - envío por email de las facturas seleccionadas en el listado.
  */
-
 function megafacSendMassEmailsProveedor() {
-    // Get all checked checkboxes
-    var checkboxes = document.querySelectorAll('input[type="checkbox"]:checked');
+    // Only the invoice table of the view that has this button: not the checkboxes of
+    // other tabs (receipts, lines...) nor the ones of the filters panel.
+    var button = document.querySelector('[onclick*="megafacSendMassEmailsProveedor"]');
+    var scope = null;
+    if (button) {
+        scope = button.closest('form') || button.closest('.tab-pane');
+    }
+    if (!scope) {
+        scope = document.querySelector('.tab-pane.active') || document;
+    }
 
-    // Filter out the "select all" checkbox if exists
-    var selectedBoxes = [];
-    checkboxes.forEach(function(cb) {
-        if (cb.value && cb.value !== 'on') {
-            selectedBoxes.push(cb);
+    var codes = [];
+    scope.querySelectorAll('table input[type="checkbox"]:checked').forEach(function (cb) {
+        if (cb.value && cb.value !== 'on' && codes.indexOf(cb.value) === -1) {
+            codes.push(cb.value);
         }
     });
 
-    if (selectedBoxes.length === 0) {
+    if (codes.length === 0) {
         alert('Por favor, selecciona al menos una factura');
         return;
     }
 
-    if (!confirm('¿Enviar emails a ' + selectedBoxes.length + ' facturas seleccionadas?')) {
+    if (!confirm('¿Enviar por email ' + codes.length + ' facturas seleccionadas?')) {
         return;
     }
 
-    // Get codes
-    var codes = [];
-    selectedBoxes.forEach(function(checkbox) {
-        codes.push(checkbox.value);
-    });
-
-    // Send AJAX request to current page with action
     var formData = new FormData();
     formData.append('action', 'megafac-send-emails-proveedor');
-    codes.forEach(function(code) {
+    codes.forEach(function (code) {
         formData.append('codes[]', code);
     });
 
     fetch(window.location.href, {
         method: 'POST',
-        body: formData
-    }).then(function(response) {
+        body: formData,
+        credentials: 'same-origin'
+    }).then(function () {
         // Reload page to show messages
         window.location.reload();
-    }).catch(function(error) {
+    }).catch(function (error) {
         alert('Error al enviar emails: ' + error);
     });
 }

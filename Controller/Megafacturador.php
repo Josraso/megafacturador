@@ -21,21 +21,11 @@ namespace FacturaScripts\Plugins\Megafacturador\Controller;
 
 use FacturaScripts\Core\Base\Controller;
 use FacturaScripts\Core\Base\DataBase\DataBaseWhere;
-use FacturaScripts\Core\Lib\Email\NewMail;
 use FacturaScripts\Core\Tools;
 use FacturaScripts\Dinamic\Lib\BusinessDocumentGenerator;
-use FacturaScripts\Dinamic\Lib\ExportManager;
-use FacturaScripts\Dinamic\Model\AlbaranCliente;
-use FacturaScripts\Dinamic\Model\AlbaranProveedor;
-use FacturaScripts\Dinamic\Model\Cliente;
-use FacturaScripts\Dinamic\Model\Ejercicio;
-use FacturaScripts\Dinamic\Model\Empresa;
 use FacturaScripts\Dinamic\Model\EstadoDocumento;
-use FacturaScripts\Dinamic\Model\FacturaCliente;
-use FacturaScripts\Dinamic\Model\FacturaProveedor;
-use FacturaScripts\Dinamic\Model\FormaPago;
-use FacturaScripts\Dinamic\Model\Proveedor;
 use FacturaScripts\Dinamic\Model\Serie;
+use FacturaScripts\Plugins\Megafacturador\Lib\MegafacturadorMailer;
 
 /**
  * Controller to mass invoice pending delivery notes (albaranes)
@@ -44,25 +34,8 @@ use FacturaScripts\Dinamic\Model\Serie;
  */
 class Megafacturador extends Controller
 {
-    /**
-     * @var Ejercicio
-     */
-    private $ejercicio;
-
-    /**
-     * @var Ejercicio[]
-     */
-    private $ejercicios;
-
-    /**
-     * @var FormaPago
-     */
-    private $forma_pago;
-
-    /**
-     * @var FormaPago[]
-     */
-    private $formas_pago;
+    /** Albaranes procesados en cada pasada (luego la página se recarga sola). */
+    const BATCH_SIZE = 20;
 
     /**
      * @var array
@@ -75,25 +48,22 @@ class Megafacturador extends Controller
     public $serie;
 
     /**
-     * @var string
+     * @var string|false
      */
     public $url_recarga;
 
     /**
-     * @var string
+     * @var string|false
      */
     public $url_enviar_emails;
 
     /**
+     * Número de facturas de VENTA generadas en esta ejecución (las que se pueden enviar por email).
+     *
      * @var int
      */
     public $facturas_generadas;
 
-    /**
-     * Returns basic page attributes
-     *
-     * @return array
-     */
     public function getPageData(): array
     {
         $data = parent::getPageData();
@@ -103,32 +73,39 @@ class Megafacturador extends Controller
         return $data;
     }
 
-    /**
-     * Runs the controller's private logic
-     *
-     * @param mixed $response
-     * @param mixed $user
-     * @param mixed $permissions
-     */
     public function privateCore(&$response, $user, $permissions)
     {
         parent::privateCore($response, $user, $permissions);
 
-        $this->ejercicio = new Ejercicio();
-        $this->ejercicios = [];
-        $this->forma_pago = new FormaPago();
-        $this->formas_pago = $this->forma_pago->all();
         $this->serie = new Serie();
         $this->url_recarga = false;
         $this->url_enviar_emails = false;
         $this->facturas_generadas = 0;
         $this->loadConfig();
 
-        if ($this->request->request->get('megafac_fecha')) {
+        $isPost = $this->request->request->get('megafac_fecha');
+        $isEmail = $this->request->query->get('enviar_emails') === 'TRUE';
+        $isProcess = $this->request->query->get('procesar') === 'TRUE';
+        if (!$isPost && !$isEmail && !$isProcess) {
+            return;
+        }
+
+        // Facturar o enviar emails modifica datos: hace falta permiso de modificación
+        if (empty($permissions->allowUpdate)) {
+            Tools::log()->warning('No tienes permiso para facturar ni enviar emails desde el MegaFacturador.');
+            return;
+        }
+
+        if ($isPost) {
+            // Formulario de la propia página: comprobamos el token
+            if (false === $this->validateFormToken()) {
+                return;
+            }
             $this->modificarConfig();
-        } elseif ($this->request->query->get('enviar_emails') === 'TRUE') {
+        } elseif ($isEmail) {
             $this->enviarEmailsFacturas();
-        } elseif ($this->request->query->get('procesar') === 'TRUE') {
+        } else {
+            // Continuación de una ejecución ya iniciada desde el formulario
             $this->generarFacturas();
         }
     }
@@ -205,33 +182,35 @@ class Megafacturador extends Controller
     }
 
     /**
-     * Get pending delivery notes to invoice
+     * Pending delivery notes. If $grupo is given, only those that can go in the SAME invoice as it:
+     * same customer/supplier, serie, currency, company, payment method and global discounts.
      *
      * @param string $modelName
-     * @param string $codcliente
-     * @param string $codproveedor
-     * @param string $codserie
-     * @param string $coddivisa
+     * @param object|null $grupo
      *
      * @return array
      */
-    public function albaranesPendientes(string $modelName = 'AlbaranCliente', string $codcliente = '', string $codproveedor = '', string $codserie = '', string $coddivisa = ''): array
+    public function albaranesPendientes(string $modelName = 'AlbaranCliente', $grupo = null): array
     {
         $where = $this->getSqlConditions();
 
-        if ($codcliente) {
-            $where[] = new DataBaseWhere('codcliente', $codcliente);
-            $where[] = new DataBaseWhere('codserie', $codserie);
-            $where[] = new DataBaseWhere('coddivisa', $coddivisa);
-        } elseif ($codproveedor) {
-            $where[] = new DataBaseWhere('codproveedor', $codproveedor);
-            $where[] = new DataBaseWhere('codserie', $codserie);
-            $where[] = new DataBaseWhere('coddivisa', $coddivisa);
+        if ($grupo !== null) {
+            if ($modelName === 'AlbaranCliente') {
+                $where[] = new DataBaseWhere('codcliente', $grupo->codcliente);
+            } else {
+                $where[] = new DataBaseWhere('codproveedor', $grupo->codproveedor);
+            }
+            $where[] = new DataBaseWhere('codserie', $grupo->codserie);
+            $where[] = new DataBaseWhere('coddivisa', $grupo->coddivisa);
+            $where[] = new DataBaseWhere('idempresa', $grupo->idempresa);
+            $where[] = new DataBaseWhere('codpago', $grupo->codpago);
+            $where[] = new DataBaseWhere('dtopor1', $grupo->dtopor1);
+            $where[] = new DataBaseWhere('dtopor2', $grupo->dtopor2);
         }
 
         $className = 'FacturaScripts\\Dinamic\\Model\\' . $modelName;
         $model = new $className();
-        return $model->all($where, ['fecha' => 'ASC', 'hora' => 'ASC'], 0, 20);
+        return $model->all($where, ['fecha' => 'ASC', 'hora' => 'ASC'], 0, self::BATCH_SIZE);
     }
 
     /**
@@ -250,35 +229,33 @@ class Megafacturador extends Controller
     }
 
     /**
-     * Get the date of the last invoice to maintain chronological order
+     * Date of the last invoice of the same company, serie and year (to keep chronological order).
      *
      * @param string $modelName
-     * @param string|null $codserie Filter by serie code
-     * @param string|null $year Filter by year (YYYY format)
+     * @param string $codserie
+     * @param int|null $idempresa
+     * @param string $year YYYY
+     *
      * @return string|null
      */
-    private function getUltimaFechaFactura(string $modelName, ?string $codserie = null, ?string $year = null): ?string
+    private function getUltimaFechaFactura(string $modelName, string $codserie, $idempresa, string $year): ?string
     {
         $className = 'FacturaScripts\\Dinamic\\Model\\' . $modelName;
         $model = new $className();
 
-        // Get last invoice ordered by date DESC, filtered by serie and year if provided
-        $where = [];
-        if ($codserie !== null) {
-            $where[] = new DataBaseWhere('codserie', $codserie);
-        }
-        if ($year !== null) {
-            // Filter by year using LIKE pattern for dd-mm-yyyy format
-            $where[] = new DataBaseWhere('fecha', '%-' . $year, 'LIKE');
+        // Rango de fechas del año. OJO: no usar LIKE sobre la fecha, la base de datos la guarda
+        // como AAAA-MM-DD y un LIKE '%-2025' no encuentra nunca nada.
+        $where = [
+            new DataBaseWhere('codserie', $codserie),
+            new DataBaseWhere('fecha', '01-01-' . $year, '>='),
+            new DataBaseWhere('fecha', '31-12-' . $year, '<='),
+        ];
+        if (!empty($idempresa)) {
+            $where[] = new DataBaseWhere('idempresa', $idempresa);
         }
 
         $facturas = $model->all($where, ['fecha' => 'DESC'], 0, 1);
-
-        if (!empty($facturas)) {
-            return $facturas[0]->fecha;
-        }
-
-        return null;
+        return empty($facturas) ? null : $facturas[0]->fecha;
     }
 
     /**
@@ -288,23 +265,9 @@ class Megafacturador extends Controller
     {
         $recargar = false;
 
-        // Use a temporary file to store invoice IDs across page reloads
-        $runId = $this->request->get('megafac_runid');
-        if (empty($runId)) {
-            // First run - create new ID and file
-            $runId = 'mf_' . time() . '_' . rand(1000, 9999);
-            $tmpFile = sys_get_temp_dir() . '/megafac_' . $runId . '.txt';
-            file_put_contents($tmpFile, '');
-
-            // Clean up old temp files (older than 1 hour)
-            $tmpDir = sys_get_temp_dir();
-            foreach (glob($tmpDir . '/megafac_mf_*.txt') as $oldFile) {
-                if (filemtime($oldFile) < time() - 3600) {
-                    @unlink($oldFile);
-                }
-            }
-        } else {
-            $tmpFile = sys_get_temp_dir() . '/megafac_' . $runId . '.txt';
+        $tmpFile = $this->getRunFile($runId);
+        if ($tmpFile === null) {
+            return;
         }
 
         // Determine invoice date based on user preference
@@ -315,55 +278,26 @@ class Megafacturador extends Controller
         }
         // If 'albaran', $fecha stays null and will use delivery note's date
 
+        $tipos = [];
         if ($this->opciones['megafac_ventas']) {
-            $total1 = 0;
-
-            $pendientes = $this->albaranesPendientes('AlbaranCliente');
-
-            foreach ($pendientes as $alb) {
-                // Group by customer or not?
-                $albaranes = [];
-                if ($this->opciones['megafac_agrupar']) {
-                    $albaranes2 = $this->albaranesPendientes('AlbaranCliente', $alb->codcliente, '', $alb->codserie, $alb->coddivisa);
-                    if ($albaranes2 && $albaranes2[0]->idalbaran === $alb->idalbaran) {
-                        $albaranes = $albaranes2;
-                    }
-                } else {
-                    $albaranes[] = $alb;
-                }
-
-                if (empty($albaranes)) {
-                    // Already invoiced when grouping, skip
-                } else {
-                    // Get year from albaran (format dd-mm-yyyy, year at position 6-9)
-                    $yearAlbaran = substr($alb->fecha, 6, 4);
-
-                    // Get last invoice date for THIS SERIE AND YEAR ONLY
-                    $ultimaFechaSerieYear = $this->getUltimaFechaFactura('FacturaCliente', $alb->codserie, $yearAlbaran);
-
-                    // Create NEW generator for each invoice to avoid reusing same instance
-                    $generator = new BusinessDocumentGenerator();
-                    if ($this->facturarAlbaranCliente($generator, $albaranes, $fecha, $ultimaFechaSerieYear, $tmpFile)) {
-                        $total1++;
-                        $recargar = true;
-                    } else {
-                        break;
-                    }
-                }
-            }
-
-            Tools::log()->notice($total1 . ' delivery notes invoiced.');
+            $tipos['AlbaranCliente'] = 'FacturaCliente';
+        }
+        if ($this->opciones['megafac_compras']) {
+            $tipos['AlbaranProveedor'] = 'FacturaProveedor';
         }
 
-        if ($this->opciones['megafac_compras']) {
-            $total2 = 0;
+        foreach ($tipos as $albaranModel => $facturaModel) {
+            if (!empty(Tools::log()->read('', ['critical', 'error']))) {
+                break; // something failed with sales delivery notes: don't continue with purchases
+            }
 
-            foreach ($this->albaranesPendientes('AlbaranProveedor') as $alb) {
-                // Group by supplier or not?
+            $total = 0;
+            foreach ($this->albaranesPendientes($albaranModel) as $alb) {
+                // Group or not?
                 $albaranes = [];
                 if ($this->opciones['megafac_agrupar']) {
-                    $albaranes2 = $this->albaranesPendientes('AlbaranProveedor', '', $alb->codproveedor, $alb->codserie, $alb->coddivisa);
-                    if ($albaranes2 && $albaranes2[0]->idalbaran === $alb->idalbaran) {
+                    $albaranes2 = $this->albaranesPendientes($albaranModel, $alb);
+                    if ($albaranes2 && $albaranes2[0]->primaryColumnValue() == $alb->primaryColumnValue()) {
                         $albaranes = $albaranes2;
                     }
                 } else {
@@ -371,84 +305,146 @@ class Megafacturador extends Controller
                 }
 
                 if (empty($albaranes)) {
-                    // Already invoiced when grouping, skip
+                    // Already invoiced in a previous group of this pass
+                    continue;
+                }
+
+                if ($this->facturarAlbaranes($albaranes, $albaranModel, $facturaModel, $fecha, $tmpFile)) {
+                    $total++;
+                    $recargar = true;
                 } else {
-                    // Get year from albaran (format dd-mm-yyyy, year at position 6-9)
-                    $yearAlbaran = substr($alb->fecha, 6, 4);
-
-                    // Get last invoice date for THIS SERIE AND YEAR ONLY
-                    $ultimaFechaSerieYear = $this->getUltimaFechaFactura('FacturaProveedor', $alb->codserie, $yearAlbaran);
-
-                    // Create NEW generator for each invoice to avoid reusing same instance
-                    $generator = new BusinessDocumentGenerator();
-                    if ($this->facturarAlbaranProveedor($generator, $albaranes, $fecha, $ultimaFechaSerieYear, $tmpFile)) {
-                        $total2++;
-                        $recargar = true;
-                    } else {
-                        break;
-                    }
+                    break;
                 }
             }
 
-            Tools::log()->notice($total2 . ' supplier delivery notes invoiced.');
+            $texto = $albaranModel === 'AlbaranCliente' ? 'albaranes de venta facturados.' : 'albaranes de compra facturados.';
+            Tools::log()->notice($total . ' ' . $texto);
         }
 
         // Reload?
         $errors = Tools::log()->read('', ['critical', 'error']);
         if (!empty($errors)) {
-            Tools::log()->error('Errors occurred. Process stopped.');
+            Tools::log()->error('Se han producido errores. Proceso detenido.');
         } elseif ($recargar) {
             $this->url_recarga = $this->url() . '?procesar=TRUE&megafac_runid=' . $runId;
-            Tools::log()->notice('Reloading...');
+            Tools::log()->notice('Recargando...');
         } else {
-            Tools::log()->notice('Finished.');
+            Tools::log()->notice('Terminado.');
 
             // Count generated invoices
-            if (file_exists($tmpFile)) {
-                $fileContent = file_get_contents($tmpFile);
-                $facturasIds = array_filter(explode("\n", trim($fileContent)));
-                $this->facturas_generadas = count($facturasIds);
+            $docs = $this->readRunFile($tmpFile);
+            $ventas = count($docs['FacturaCliente']);
+            $compras = count($docs['FacturaProveedor']);
+            $this->facturas_generadas = $ventas;
+            if ($ventas + $compras > 0) {
+                Tools::log()->notice('Facturas generadas: ' . $ventas . ' de venta y ' . $compras . ' de compra.');
+            }
 
-                if ($this->opciones['megafac_email'] && $this->facturas_generadas > 0) {
-                    // Show button to send emails
-                    $this->url_enviar_emails = $this->url() . '?enviar_emails=TRUE&runid=' . $runId;
-                    Tools::log()->notice('Click the button below to send ' . $this->facturas_generadas . ' emails.');
-                } else {
-                    // Clean up temp file if not sending emails
-                    @unlink($tmpFile);
-                }
+            if ($this->opciones['megafac_email'] && $ventas > 0) {
+                // Show button to send emails (only sales invoices are emailed)
+                $this->url_enviar_emails = $this->url() . '?enviar_emails=TRUE&runid=' . $runId;
+            } else {
+                // Clean up temp file if not sending emails
+                @unlink($tmpFile);
             }
         }
     }
 
     /**
-     * Generate invoice from customer delivery notes
+     * Temporary file that keeps the invoices generated along the reloads of one execution.
+     * The run id is random and is only created from the form (POST with token), so a link
+     * with an unknown or invented run id is rejected.
      *
-     * @param BusinessDocumentGenerator $generator
+     * @param string|null $runId
+     *
+     * @return string|null
+     */
+    private function getRunFile(?string &$runId): ?string
+    {
+        $runId = (string)$this->request->get('megafac_runid', '');
+        if ($runId === '') {
+            if (empty($this->request->request->get('megafac_fecha'))) {
+                // A new execution can only be started from the form
+                Tools::log()->warning('Pulsa el botón "Empezar" para iniciar la facturación.');
+                return null;
+            }
+
+            $runId = 'mf_' . bin2hex(random_bytes(8));
+            $tmpFile = $this->runFilePath($runId);
+            file_put_contents($tmpFile, '');
+
+            // Clean up old temp files (older than 1 hour)
+            foreach (glob(sys_get_temp_dir() . '/megafac_mf_*.txt') as $oldFile) {
+                if (filemtime($oldFile) < time() - 3600) {
+                    @unlink($oldFile);
+                }
+            }
+            return $tmpFile;
+        }
+
+        $tmpFile = $this->runFilePath($runId);
+        if ($tmpFile === null || !file_exists($tmpFile)) {
+            Tools::log()->warning('Ejecución no válida o caducada. Vuelve a pulsar "Empezar".');
+            return null;
+        }
+        return $tmpFile;
+    }
+
+    /**
+     * Validated path of the temp file (prevents ../ in the run id).
+     */
+    private function runFilePath(string $runId): ?string
+    {
+        if (1 !== preg_match('/^mf_[a-f0-9]{16}$/', $runId)) {
+            return null;
+        }
+        return sys_get_temp_dir() . '/megafac_' . $runId . '.txt';
+    }
+
+    /**
+     * Lines are "FacturaCliente:ID" or "FacturaProveedor:ID".
+     */
+    private function readRunFile(string $tmpFile): array
+    {
+        $docs = ['FacturaCliente' => [], 'FacturaProveedor' => []];
+        if (!file_exists($tmpFile)) {
+            return $docs;
+        }
+
+        foreach (explode("\n", trim((string)file_get_contents($tmpFile))) as $row) {
+            $parts = explode(':', trim($row));
+            if (count($parts) === 2 && isset($docs[$parts[0]]) && $parts[1] !== '') {
+                $docs[$parts[0]][] = $parts[1];
+            }
+        }
+        return $docs;
+    }
+
+    /**
+     * Generate ONE invoice from one or more delivery notes, all inside a transaction:
+     * if anything fails nothing is saved (no half-invoiced delivery notes, no duplicates).
+     *
      * @param array $albaranes
+     * @param string $albaranModel
+     * @param string $facturaModel
      * @param string|null $fecha
-     * @param string|null $ultimaFechaSerieYear Last invoice of same serie and year
      * @param string $tmpFile
      *
      * @return bool
      */
-    private function facturarAlbaranCliente($generator, array $albaranes, ?string $fecha, ?string $ultimaFechaSerieYear, string $tmpFile): bool
+    private function facturarAlbaranes(array $albaranes, string $albaranModel, string $facturaModel, ?string $fecha, string $tmpFile): bool
     {
-        if (empty($albaranes)) {
-            return false;
-        }
-
         // Use first albaran as prototype (oldest in the batch)
         $prototype = $albaranes[0];
 
-        // Collect all lines from all albaranes and track quantities
+        // Collect all lines from all albaranes. Only the PENDING quantity of each line is invoiced
+        // (cantidad - servido), so partially served delivery notes are not invoiced twice.
         $newLines = [];
         $quantities = [];
-
+        $hayPendiente = false;
         foreach ($albaranes as $alb) {
             // Add separator line showing albaran info (when grouping multiple albaranes)
             if (count($albaranes) > 1) {
-                // Create info line with albaran number and date
                 $infoLine = $alb->getNewLine();
                 $infoLine->cantidad = 0;
                 $infoLine->pvpunitario = 0;
@@ -457,382 +453,179 @@ class Megafacturador extends Controller
                 $quantities[$infoLine->primaryColumnValue()] = 0;
             }
 
-            // Add all product lines from this albaran
             foreach ($alb->getLines() as $line) {
-                $newLines[] = $line;
-                $quantities[$line->primaryColumnValue()] = $line->cantidad;
-            }
-        }
-
-        // Prepare properties with date
-        $properties = [];
-        if ($fecha) {
-            // Use custom date (today)
-            $properties['fecha'] = $fecha;
-        } else {
-            // Decide which date to use for the invoice
-            $fechaFactura = $prototype->fecha;
-
-            // If there's a last invoice from same serie and year, compare with it
-            if ($ultimaFechaSerieYear) {
-                $timestampAlbaran = strtotime($prototype->fecha);
-                $timestampUltima = strtotime($ultimaFechaSerieYear);
-
-                if ($timestampAlbaran < $timestampUltima) {
-                    $fechaFactura = $ultimaFechaSerieYear;
+                $pendiente = $this->cantidadPendiente($line);
+                if ($pendiente != 0) {
+                    $hayPendiente = true;
                 }
+                $newLines[] = $line;
+                $quantities[$line->primaryColumnValue()] = $pendiente;
             }
-            // If NO last invoice from same serie+year, use albaran's own date (NEVER mix years)
-
-            $properties['fecha'] = $fechaFactura;
         }
 
-        // Generate invoice from all lines
-        $success = $generator->generate($prototype, 'FacturaCliente', $newLines, $quantities, $properties);
+        $generadas = [];
+        $this->dataBase->beginTransaction();
 
-        if (!$success) {
-            Tools::log()->error('failed-to-generate-invoice');
+        if ($hayPendiente) {
+            $properties = ['fecha' => $fecha ?? $this->fechaFactura($prototype, $facturaModel)];
+
+            // Generate invoice. BusinessDocumentGenerator already updates "servido" in the
+            // delivery note lines, so it must NOT be updated again here.
+            $generator = new BusinessDocumentGenerator();
+            if (false === $generator->generate($prototype, $facturaModel, $newLines, $quantities, $properties)) {
+                $this->dataBase->rollback();
+                Tools::log()->error('No se pudo generar la factura del albarán ' . $prototype->codigo . '.');
+                return false;
+            }
+
+            foreach ($generator->getLastDocs() as $factura) {
+                if ($this->opciones['megafac_emitir']) {
+                    $this->emitirFactura($factura, $facturaModel);
+                }
+                $generadas[] = $facturaModel . ':' . $factura->primaryColumnValue();
+            }
+        }
+
+        // Close the delivery notes that are now fully served
+        foreach ($albaranes as $alb) {
+            if (false === $this->cerrarAlbaranSiServido($alb, $albaranModel, $facturaModel)) {
+                $this->dataBase->rollback();
+                Tools::log()->error('No se pudo marcar como facturado el albarán ' . $alb->codigo . '.');
+                return false;
+            }
+        }
+
+        if (false === $this->dataBase->commit()) {
+            $this->dataBase->rollback();
+            Tools::log()->error('No se pudo guardar la factura del albarán ' . $prototype->codigo . '.');
             return false;
         }
 
-        // Store generated invoice ID in temp file for later email sending
-        $facturas = $generator->getLastDocs();
-        if (!empty($facturas)) {
-            $factura = $facturas[0];
-            $facturaId = $factura->primaryColumnValue();
-            file_put_contents($tmpFile, $facturaId . "\n", FILE_APPEND);
-
-            // Mark invoice as issued (not draft) if option is enabled
-            if ($this->opciones['megafac_emitir']) {
-                $factura->setDocumentGeneration(false);
-
-                // Find non-editable status for FacturaCliente
-                $estadoModel = new EstadoDocumento();
-                $whereEstado = [
-                    new DataBaseWhere('tipodoc', 'FacturaCliente'),
-                    new DataBaseWhere('editable', false)
-                ];
-                $estados = $estadoModel->all($whereEstado, [], 0, 1);
-
-                if (!empty($estados)) {
-                    $factura->idestado = $estados[0]->idestado;
-                }
-
-                $factura->editable = false;
-                if (!$factura->save()) {
-                    Tools::log()->warning('failed-to-mark-invoice-as-issued');
-                }
-            }
+        // only after commit: these invoices really exist
+        foreach ($generadas as $row) {
+            file_put_contents($tmpFile, $row . "\n", FILE_APPEND);
         }
-
-        // CRITICAL: Mark lines as served and check if albaran is fully invoiced
-        foreach ($albaranes as $alb) {
-            $allServed = true;
-
-            // Get fresh lines from database
-            $lines = $alb->getLines();
-            foreach ($lines as $line) {
-                // Update servido field
-                if (isset($quantities[$line->primaryColumnValue()])) {
-                    $line->servido += $quantities[$line->primaryColumnValue()];
-                    if (!$line->save()) {
-                        Tools::log()->error('failed-to-update-servido');
-                        return false;
-                    }
-                }
-
-                // Check if this line is fully served
-                if ($line->servido < $line->cantidad) {
-                    $allServed = false;
-                }
-            }
-
-            // If all lines fully served, mark document as non-editable
-            if ($allServed) {
-                // Prevent auto-generation when changing status
-                $alb->setDocumentGeneration(false);
-
-                // Find non-editable status for this document type
-                $estadoModel = new EstadoDocumento();
-                $whereEstado = [
-                    new DataBaseWhere('tipodoc', 'AlbaranCliente'),
-                    new DataBaseWhere('editable', false)
-                ];
-                $estados = $estadoModel->all($whereEstado, [], 0, 1);
-
-                if (!empty($estados)) {
-                    $alb->idestado = $estados[0]->idestado;
-                }
-
-                $alb->editable = false;
-                if (!$alb->save()) {
-                    Tools::log()->error('failed-to-mark-as-invoiced');
-                    return false;
-                }
-            }
-        }
-
         return true;
     }
 
     /**
-     * Generate invoice from supplier delivery notes
-     *
-     * @param BusinessDocumentGenerator $generator
-     * @param array $albaranes
-     * @param string|null $fecha
-     * @param string|null $ultimaFechaSerieYear Last invoice of same serie and year
-     * @param string $tmpFile
-     *
-     * @return bool
+     * Pending quantity of a delivery note line (also works with negative quantities / returns).
      */
-    private function facturarAlbaranProveedor($generator, array $albaranes, ?string $fecha, ?string $ultimaFechaSerieYear, string $tmpFile): bool
+    private function cantidadPendiente($line): float
     {
-        if (empty($albaranes)) {
-            return false;
+        $cantidad = (float)$line->cantidad;
+        $pendiente = $cantidad - (float)$line->servido;
+        if ($cantidad >= 0) {
+            return max(0.0, $pendiente);
         }
-
-        // Use first albaran as prototype (oldest in the batch)
-        $prototype = $albaranes[0];
-
-        // Collect all lines from all albaranes and track quantities
-        $newLines = [];
-        $quantities = [];
-
-        foreach ($albaranes as $alb) {
-            // Add separator line showing albaran info (when grouping multiple albaranes)
-            if (count($albaranes) > 1) {
-                // Create info line with albaran number and date
-                $infoLine = $alb->getNewLine();
-                $infoLine->cantidad = 0;
-                $infoLine->pvpunitario = 0;
-                $infoLine->descripcion = 'Albarán ' . $alb->codigo . ' (' . $alb->numero2 . '), ' . $alb->fecha;
-                $newLines[] = $infoLine;
-                $quantities[$infoLine->primaryColumnValue()] = 0;
-            }
-
-            // Add all product lines from this albaran
-            foreach ($alb->getLines() as $line) {
-                $newLines[] = $line;
-                $quantities[$line->primaryColumnValue()] = $line->cantidad;
-            }
-        }
-
-        // Prepare properties with date
-        $properties = [];
-        if ($fecha) {
-            // Use custom date (today)
-            $properties['fecha'] = $fecha;
-        } else {
-            // Decide which date to use for the invoice
-            $fechaFactura = $prototype->fecha;
-
-            // If there's a last invoice from same serie and year, compare with it
-            if ($ultimaFechaSerieYear) {
-                $timestampAlbaran = strtotime($prototype->fecha);
-                $timestampUltima = strtotime($ultimaFechaSerieYear);
-
-                if ($timestampAlbaran < $timestampUltima) {
-                    $fechaFactura = $ultimaFechaSerieYear;
-                }
-            }
-            // If NO last invoice from same serie+year, use albaran's own date (NEVER mix years)
-
-            $properties['fecha'] = $fechaFactura;
-        }
-
-        // Generate invoice from all lines
-        $success = $generator->generate($prototype, 'FacturaProveedor', $newLines, $quantities, $properties);
-
-        if (!$success) {
-            Tools::log()->error('failed-to-generate-invoice');
-            return false;
-        }
-
-        // Store generated invoice ID in temp file (for potential future use)
-        $facturas = $generator->getLastDocs();
-        if (!empty($facturas)) {
-            $factura = $facturas[0];
-            $facturaId = $factura->primaryColumnValue();
-            file_put_contents($tmpFile, $facturaId . "\n", FILE_APPEND);
-
-            // Mark invoice as issued (not draft) if option is enabled
-            if ($this->opciones['megafac_emitir']) {
-                $factura->setDocumentGeneration(false);
-
-                // Find non-editable status for FacturaProveedor
-                $estadoModel = new EstadoDocumento();
-                $whereEstado = [
-                    new DataBaseWhere('tipodoc', 'FacturaProveedor'),
-                    new DataBaseWhere('editable', false)
-                ];
-                $estados = $estadoModel->all($whereEstado, [], 0, 1);
-
-                if (!empty($estados)) {
-                    $factura->idestado = $estados[0]->idestado;
-                }
-
-                $factura->editable = false;
-                if (!$factura->save()) {
-                    Tools::log()->warning('failed-to-mark-invoice-as-issued');
-                }
-            }
-        }
-
-        // CRITICAL: Mark lines as served and check if albaran is fully invoiced
-        foreach ($albaranes as $alb) {
-            $allServed = true;
-
-            // Get fresh lines from database
-            $lines = $alb->getLines();
-            foreach ($lines as $line) {
-                // Update servido field
-                if (isset($quantities[$line->primaryColumnValue()])) {
-                    $line->servido += $quantities[$line->primaryColumnValue()];
-                    if (!$line->save()) {
-                        Tools::log()->error('failed-to-update-servido');
-                        return false;
-                    }
-                }
-
-                // Check if this line is fully served
-                if ($line->servido < $line->cantidad) {
-                    $allServed = false;
-                }
-            }
-
-            // If all lines fully served, mark document as non-editable
-            if ($allServed) {
-                // Prevent auto-generation when changing status
-                $alb->setDocumentGeneration(false);
-
-                // Find non-editable status for this document type
-                $estadoModel = new EstadoDocumento();
-                $whereEstado = [
-                    new DataBaseWhere('tipodoc', 'AlbaranProveedor'),
-                    new DataBaseWhere('editable', false)
-                ];
-                $estados = $estadoModel->all($whereEstado, [], 0, 1);
-
-                if (!empty($estados)) {
-                    $alb->idestado = $estados[0]->idestado;
-                }
-
-                $alb->editable = false;
-                if (!$alb->save()) {
-                    Tools::log()->error('failed-to-mark-as-invoiced');
-                    return false;
-                }
-            }
-        }
-
-        return true;
+        return min(0.0, $pendiente);
     }
 
     /**
-     * Send emails for generated invoices
+     * Invoice date when invoicing with the delivery note date: if there are later invoices of the
+     * same company, serie and year, use the date of the last one (FacturaScripts does not allow
+     * an invoice dated before the previous one). Never moves the date to another year.
+     */
+    private function fechaFactura($prototype, string $facturaModel): string
+    {
+        $fechaFactura = $prototype->fecha;
+        $year = date('Y', strtotime($prototype->fecha));
+        $ultima = $this->getUltimaFechaFactura($facturaModel, $prototype->codserie, $prototype->idempresa, $year);
+        if ($ultima && strtotime($fechaFactura) < strtotime($ultima)) {
+            $fechaFactura = $ultima;
+        }
+        return $fechaFactura;
+    }
+
+    /**
+     * Change the invoice from draft (Boceto) to issued (Emitida / Recibida).
+     */
+    private function emitirFactura($factura, string $facturaModel): void
+    {
+        $estado = $this->getEstadoNoEditable($facturaModel);
+        if ($estado === null) {
+            Tools::log()->warning('No hay ningún estado "no editable" para ' . $facturaModel . '. La factura ' . $factura->codigo . ' queda como boceto.');
+            return;
+        }
+
+        $factura->setDocumentGeneration(false);
+        $factura->idestado = $estado->idestado;
+        if (false === $factura->save()) {
+            Tools::log()->warning('No se pudo emitir la factura ' . $factura->codigo . ', queda como boceto.');
+        }
+    }
+
+    /**
+     * Mark the delivery note as invoiced if all its lines are fully served.
+     */
+    private function cerrarAlbaranSiServido($alb, string $albaranModel, string $facturaModel): bool
+    {
+        // fresh lines from database (servido was updated by the generator)
+        foreach ($alb->getLines() as $line) {
+            if (abs((float)$line->servido) < abs((float)$line->cantidad)) {
+                return true; // still partially pending, keep it open
+            }
+        }
+
+        // reload so we don't overwrite changes made by the generator
+        $alb->loadFromCode($alb->primaryColumnValue());
+
+        $estado = $this->getEstadoNoEditable($albaranModel, $facturaModel);
+        if ($estado !== null) {
+            // Prevent auto-generation of another invoice when changing status
+            $alb->setDocumentGeneration(false);
+            $alb->idestado = $estado->idestado;
+        }
+        $alb->editable = false;
+
+        return $alb->save();
+    }
+
+    /**
+     * Non-editable status for a document type, chosen explicitly: if $generadoc is given, the one that
+     * generates that document (e.g. "Facturar" for delivery notes); otherwise the first one by order
+     * that does not generate anything (e.g. "Emitida"/"Recibida" for invoices). Never "Devuelto",
+     * "Anulada"... unless there is nothing else.
+     */
+    private function getEstadoNoEditable(string $tipodoc, string $generadoc = ''): ?EstadoDocumento
+    {
+        $estadoModel = new EstadoDocumento();
+        $estados = $estadoModel->all([
+            new DataBaseWhere('tipodoc', $tipodoc),
+            new DataBaseWhere('editable', false)
+        ], ['orden' => 'ASC', 'idestado' => 'ASC'], 0, 0);
+
+        foreach ($estados as $estado) {
+            if ($generadoc !== '' && $estado->generadoc === $generadoc) {
+                return $estado;
+            }
+        }
+        foreach ($estados as $estado) {
+            if (empty($estado->generadoc)) {
+                return $estado;
+            }
+        }
+        return $estados[0] ?? null;
+    }
+
+    /**
+     * Send emails for the sales invoices generated in this execution
      */
     private function enviarEmailsFacturas(): void
     {
-        $runId = $this->request->get('runid', '');
-        $tmpFile = sys_get_temp_dir() . '/megafac_' . $runId . '.txt';
-
-        if (!file_exists($tmpFile)) {
-            Tools::log()->error('no-temp-file-found');
+        $runId = (string)$this->request->get('runid', '');
+        $tmpFile = $this->runFilePath($runId);
+        if ($tmpFile === null || !file_exists($tmpFile)) {
+            Tools::log()->error('No se encuentran las facturas de esta ejecución (puede que ya se enviaran o que haya caducado).');
             return;
         }
 
-        // Read invoice IDs from temp file
-        $fileContent = file_get_contents($tmpFile);
-        $facturasIds = array_filter(explode("\n", trim($fileContent)));
-
-        if (empty($facturasIds)) {
-            Tools::log()->warning('no-invoices-to-send');
-            @unlink($tmpFile);
-            return;
+        $ids = $this->readRunFile($tmpFile)['FacturaCliente'];
+        if (empty($ids)) {
+            Tools::log()->warning('No hay facturas de venta que enviar.');
+        } else {
+            MegafacturadorMailer::sendMany('FacturaCliente', $ids);
         }
-
-        // Load invoices by their IDs
-        $facturas = [];
-        foreach ($facturasIds as $id) {
-            $factura = new FacturaCliente();
-            if ($factura->loadFromCode($id)) {
-                $facturas[] = $factura;
-            }
-        }
-
-        $enviados = 0;
-        $errores = 0;
-
-        foreach ($facturas as $factura) {
-            // Get customer to get email if not in invoice
-            if (empty($factura->email)) {
-                $cliente = new Cliente();
-                if ($cliente->loadFromCode($factura->codcliente)) {
-                    $factura->email = $cliente->email;
-                }
-            }
-
-            // Get customer email
-            if (empty($factura->email)) {
-                Tools::log()->warning('invoice-without-email', ['%invoice%' => $factura->codigo]);
-                $errores++;
-                continue;
-            }
-
-            // Get company info
-            $empresa = new Empresa();
-            $empresa->loadFromCode($factura->idempresa);
-            $empresaNombre = $empresa->nombrecorto ?? 'Su empresa';
-
-            // Generate PDF using ExportManager (like native FacturaScripts)
-            try {
-                $export = new ExportManager();
-                $export->newDoc('PDF');
-                $export->addBusinessDocPage($factura);
-                $pdfContent = $export->getDoc();
-
-                // Save to temporary file
-                $pdfFileName = 'factura_' . $factura->codigo . '.pdf';
-                $pdfPath = sys_get_temp_dir() . '/' . $pdfFileName;
-                file_put_contents($pdfPath, $pdfContent);
-
-                // Prepare email body
-                $bodyHtml = '<p>Estimado/a <strong>' . $factura->nombrecliente . '</strong>,</p>' .
-                           '<p>Le informamos que adjuntamos su factura <strong>' . $factura->codigo . '</strong> en formato PDF.</p>' .
-                           '<p>Atentamente,<br>' . $empresaNombre . '</p>';
-
-                // Create and send email with PDF attachment
-                $mail = NewMail::create()
-                    ->to($factura->email, $factura->nombrecliente)
-                    ->subject($empresaNombre . ' - Factura ' . $factura->codigo)
-                    ->body($bodyHtml)
-                    ->addAttachment($pdfPath, $pdfFileName);
-
-                // Send
-                if ($mail->send()) {
-                    $enviados++;
-                    Tools::log()->info('invoice-email-sent', ['%invoice%' => $factura->codigo, '%email%' => $factura->email]);
-
-                    // Mark invoice as sent
-                    $factura->femail = date('d-m-Y');
-                    $factura->horamail = date('H:i:s');
-                    $factura->save();
-                } else {
-                    $errores++;
-                    Tools::log()->error('invoice-email-failed', ['%invoice%' => $factura->codigo]);
-                }
-
-                // Clean up temporary PDF file
-                @unlink($pdfPath);
-
-            } catch (\Exception $e) {
-                $errores++;
-                Tools::log()->error('invoice-email-error', ['%invoice%' => $factura->codigo, '%error%' => $e->getMessage()]);
-            }
-        }
-
-        Tools::log()->notice($enviados . ' emails sent, ' . $errores . ' errors.');
 
         // Clean up temp file after sending
         @unlink($tmpFile);
