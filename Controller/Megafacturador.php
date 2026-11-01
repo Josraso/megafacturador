@@ -589,11 +589,20 @@ class Megafacturador extends Controller
      */
     private function getEstadoNoEditable(string $tipodoc, string $generadoc = ''): ?EstadoDocumento
     {
+        // Only filter by document type in SQL and do the rest in PHP: some FacturaScripts versions
+        // don't have the "orden" column, and ordering by it made the query fail silently.
         $estadoModel = new EstadoDocumento();
-        $estados = $estadoModel->all([
-            new DataBaseWhere('tipodoc', $tipodoc),
-            new DataBaseWhere('editable', false)
-        ], ['orden' => 'ASC', 'idestado' => 'ASC'], 0, 0);
+        $estados = [];
+        foreach ($estadoModel->all([new DataBaseWhere('tipodoc', $tipodoc)], [], 0, 0) as $estado) {
+            if (empty($estado->editable)) {
+                $estados[] = $estado;
+            }
+        }
+        usort($estados, function ($a, $b) {
+            $ordenA = isset($a->orden) ? (int)$a->orden : 100;
+            $ordenB = isset($b->orden) ? (int)$b->orden : 100;
+            return $ordenA === $ordenB ? (int)$a->idestado <=> (int)$b->idestado : $ordenA <=> $ordenB;
+        });
 
         foreach ($estados as $estado) {
             if ($generadoc !== '' && $estado->generadoc === $generadoc) {
